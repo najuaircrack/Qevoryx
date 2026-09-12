@@ -28,7 +28,7 @@ std::string trim(std::string value) {
 }
 
 std::optional<std::string> environment_value(const char* name) {
-#if QEVORYX_PLATFORM_WINDOWS
+#if defined(_MSC_VER)
     char* value = nullptr;
     std::size_t size = 0;
     if (_dupenv_s(&value, &size, name) != 0 || value == nullptr) {

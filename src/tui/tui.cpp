@@ -63,9 +63,9 @@ struct Field {
 
 constexpr int field_count = 10;
 constexpr int action_count = 4;
-constexpr std::size_t panel_width = 92;
-constexpr std::size_t left_panel_width = 56;
-constexpr std::size_t right_panel_width = 34;
+constexpr std::size_t panel_width = 77;
+constexpr std::size_t left_panel_width = 50;
+constexpr std::size_t right_panel_width = 25;
 
 #if QEVORYX_PLATFORM_WINDOWS
 #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
@@ -320,7 +320,7 @@ std::string validation_error(const config::Config& config) {
     if (inet_pton(AF_INET, config.target_ip.c_str(), &address) != 1) {
         return "Enter a valid IPv4 target.";
     }
-    if (config.target_port == 0 || config.target_port > 65535) {
+    if (config.target_port == 0) {
         return "Target port must be between 1 and 65535.";
     }
     if (config.worker_count == 0 || config.worker_count > static_cast<std::uint32_t>(common::MAX_THREADS)) {
@@ -510,9 +510,9 @@ void render(const config::Config& config,
     }
 
     screen << top_border(" KEYBOARD ") << '\n';
-    screen << content_line("Up and Down move. Tab switches panel. Enter edits a field or runs an action.") << '\n';
-    screen << content_line("Left and Right change a choice. Space selects the next choice. Esc cancels editing.") << '\n';
-    screen << content_line("L launches. S saves. D restores safe defaults. Q quits. Ctrl+C also quits.") << '\n';
+    screen << content_line("Up and Down move. Tab switches panels. Enter edits or activates.") << '\n';
+    screen << content_line("Left and Right change values. Space cycles choices. Esc cancels.") << '\n';
+    screen << content_line("L launches. S saves. D resets. Q quits. Ctrl+C also quits.") << '\n';
     screen << border() << '\n';
 
     std::cout << screen.str() << std::flush;
