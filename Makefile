@@ -61,7 +61,8 @@ ifneq (,$(findstring MSYS,$(UNAME_S)))
     LDLIBS += -lws2_32 -liphlpapi -lpanelw -lncursesw
 endif
 ifeq ($(UNAME_S),Linux)
-    LDLIBS += -lpanelw -lncursesw
+    NCURSES_LIBS := $(shell pkg-config --static --libs panelw ncursesw 2>/dev/null || printf '%s' '-lpanelw -lncursesw -ltinfo')
+    LDLIBS += $(NCURSES_LIBS)
 endif
 
 .PHONY: all static clean
