@@ -12,7 +12,7 @@ void TuiLayout::update(TuiScreen screen) {
     const int width = std::max(COLS, 80);
     const int height = std::max(LINES, 24);
 
-    header_ = {0, 0, width, 4};
+    header_ = {0, 0, width, 6};
     footer_ = {0, height - 2, width, 2};
 
     const int body_top = header_.height;

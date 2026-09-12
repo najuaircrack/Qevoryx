@@ -63,6 +63,11 @@ struct TuiState {
 
     bool running{true};
     bool dirty{true};
+    bool runtime_paused{false};
+
+    std::string edit_buffer;
+    int edit_cursor{0};
+    int edit_row{0};
 
     std::string error_message;
 };

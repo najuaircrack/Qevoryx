@@ -8,6 +8,8 @@
 #include "ui/tui_state.hpp"
 #include "ui/tui_theme.hpp"
 
+#include <optional>
+
 namespace ui {
 
 class TuiApplication {

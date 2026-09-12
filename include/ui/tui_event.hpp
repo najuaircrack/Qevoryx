@@ -20,6 +20,10 @@ enum class TuiEventType {
     Reset,
     Help,
     Quit,
+    Stop,
+    Pause,
+    Resume,
+    Return,
 
     Resize
 };

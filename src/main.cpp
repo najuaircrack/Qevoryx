@@ -1,6 +1,8 @@
 #include "config/cli_parser.hpp"
+#include "config/settings_store.hpp"
 #include "app/application.hpp"
-#include "tui/tui.hpp"
+#include "app/application_controller.hpp"
+#include "ui/tui_application.hpp"
 #include <iostream>
 #include <exception>
 #include <cstring>
@@ -25,22 +27,23 @@ int main(int argc, char** argv) {
             }
         }
 
-        config::Config config;
+        config::Config config = config::SettingsStore::load().value_or(config::SettingsStore::defaults());
+
         if (config::CliParser::has_cli_flag(argc, argv)) {
             config = config::CliParser::parse(argc, argv);
-        } else if (explicit_tui || argc == 1) {
-            const auto selected = tui::Tui::run();
-            if (!selected) {
-                std::cout << "\n  Cancelled.\n" << std::endl;
-                return 0;
-            }
-            config = *selected;
-        } else {
-            config = config::CliParser::parse(argc, argv);
+            app::Application application{std::move(config)};
+            return application.run();
         }
 
-        app::Application application{std::move(config)};
-        return application.run();
+        if (explicit_tui || argc == 1) {
+            auto controller = app::create_application_controller(std::move(config));
+            ui::TuiApplication tui{*controller};
+            return tui.run();
+        } else {
+            config = config::CliParser::parse(argc, argv);
+            app::Application application{std::move(config)};
+            return application.run();
+        }
     } catch (const std::exception& error) {
         std::cerr << "  Fatal error: " << error.what() << std::endl;
         return 1;

@@ -6,6 +6,7 @@ LDLIBS :=
 SOURCES := \
     src/main.cpp \
     src/app/application.cpp \
+    src/app/application_controller.cpp \
     src/app/thread_affinity.cpp \
     src/config/cli_parser.cpp \
     src/config/settings_store.cpp \
@@ -22,8 +23,24 @@ SOURCES := \
     src/transport/test_transport.cpp \
     src/monitor/console_monitor.cpp \
     src/monitor/monitor_factory.cpp \
-    src/tui/logo.cpp \
-    src/tui/tui.cpp
+    src/ui/tui_application.cpp \
+    src/ui/tui_state.cpp \
+    src/ui/tui_theme.cpp \
+    src/ui/tui_layout.cpp \
+    src/ui/renderer.cpp \
+    src/ui/widgets/panel.cpp \
+    src/ui/widgets/header.cpp \
+    src/ui/widgets/configuration_panel.cpp \
+    src/ui/widgets/actions_panel.cpp \
+    src/ui/widgets/status_panel.cpp \
+    src/ui/widgets/event_log_panel.cpp \
+    src/ui/widgets/footer.cpp \
+    src/ui/widgets/modal.cpp \
+    src/ui/widgets/selectable_list.cpp \
+    src/ui/widgets/value_editor.cpp \
+    src/ui/widgets/help_panel.cpp \
+    src/ui/widgets/runtime_panel.cpp \
+    src/ui/widgets/live_status_panel.cpp
 
 OBJECTS := $(SOURCES:.cpp=.o)
 OBJECTS_STATIC := $(SOURCES:.cpp=.static.o)
@@ -44,6 +61,7 @@ ifneq (,$(findstring MSYS,$(UNAME_S)))
     LDLIBS += -lws2_32 -liphlpapi
 endif
 ifeq ($(UNAME_S),Linux)
+    LDLIBS += -lncursesw -lpanelw
 endif
 
 .PHONY: all static clean
