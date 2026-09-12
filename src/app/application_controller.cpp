@@ -42,32 +42,37 @@ public:
     }
 
     void launch(const config::Config& config) override {
+        if (runtime_thread_.joinable()) {
+            runtime_thread_.join();
+        }
+
         if (running_.exchange(true)) {
             return;
         }
 
         config_ = config;
-        log(Severity::Info, "Runtime started");
+        log(ui::Severity::Info, "Runtime started");
 
-        auto application = std::make_unique<app::Application>(config_);
-        auto* raw_application = application.get();
+        application_ = std::make_unique<app::Application>(config_, false);
 
-        runtime_thread_ = std::thread([this, raw_application]() {
+        runtime_thread_ = std::thread([this]() {
             std::ostringstream output;
             auto* old_cout = std::cout.rdbuf(output.rdbuf());
             auto* old_cerr = std::cerr.rdbuf(output.rdbuf());
 
-            const int result = raw_application->run();
+            const int result = application_->run();
 
             std::cout.rdbuf(old_cout);
             std::cerr.rdbuf(old_cerr);
 
             running_ = false;
             if (result == 0) {
-                log(Severity::Success, "Runtime stopped");
+                log(ui::Severity::Success, "Runtime stopped");
             } else {
-                log(Severity::Error, "Runtime failed");
+                log(ui::Severity::Error, "Runtime failed");
             }
+
+            application_.reset();
         });
     }
 
@@ -76,26 +81,27 @@ public:
             app::Application::request_stop();
             runtime_thread_.join();
         }
+        application_.reset();
         running_ = false;
     }
 
     void save(const config::Config& config) override {
         config_ = config;
         if (config::SettingsStore::save(config_)) {
-            log(Severity::Success, "Settings saved");
+            log(ui::Severity::Success, "Settings saved");
         } else {
-            log(Severity::Error, "Failed to save settings");
+            log(ui::Severity::Error, "Failed to save settings");
         }
     }
 
     void reset() override {
         config_ = config::SettingsStore::defaults();
-        log(Severity::Info, "Settings reset");
+        log(ui::Severity::Info, "Settings reset");
     }
 
     void pause() override {
         stop();
-        log(Severity::Warning, "Runtime paused");
+        log(ui::Severity::Warning, "Runtime paused");
     }
 
     void resume() override {
@@ -107,14 +113,22 @@ private:
         const auto now = std::chrono::system_clock::now();
         const std::time_t time = std::chrono::system_clock::to_time_t(now);
         std::tm local{};
-        localtime_r(&time, &local);
+#ifdef _WIN32
+        if (localtime_s(&local, &time) != 0) {
+            return {};
+        }
+#else
+        if (localtime_r(&time, &local) == nullptr) {
+            return {};
+        }
+#endif
 
         std::ostringstream stream;
         stream << std::put_time(&local, "%H:%M:%S");
         return stream.str();
     }
 
-    void log(Severity severity, const std::string& message) {
+    void log(ui::Severity severity, const std::string& message) {
         std::lock_guard<std::mutex> lock(events_mutex_);
         events_.push_back({timestamp(), severity, message});
         if (events_.size() > 100) {
@@ -123,6 +137,7 @@ private:
     }
 
     config::Config config_;
+    std::unique_ptr<app::Application> application_;
     std::thread runtime_thread_;
     std::atomic<bool> running_{false};
     mutable std::mutex events_mutex_;

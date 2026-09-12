@@ -4,15 +4,19 @@
 
 # Qevoryx
 
-Qevoryx is a packet generator for careful network testing in places where you have permission to work. It opens as a friendly terminal control panel, keeps your settings between runs, and gives you clear feedback while it runs.
+Qevoryx is a packet generator for careful network testing in places where you have permission to work. It opens as a polished ncursesw control panel, keeps your settings between runs, and gives you clear feedback while it runs.
 
 The command line is still there when you need it, but the panel is now the main way to use Qevoryx.
 
 ## What you get
 
-* A keyboard driven control panel with configuration on one side and actions on the other
-* A responsive control panel that adapts to your terminal width and height
-* A truecolor version of the Qevoryx logo inside the panel
+* A component based ncursesw control panel
+* A responsive layout that adapts to terminal width and height
+* Separate panels for configuration, actions, status, and the event log
+* A compact Qevoryx logo in the header
+* Context sensitive keyboard hints
+* A dedicated runtime screen with live counters
+* A help screen and reusable confirmation dialogs
 * Settings that are remembered in a simple file on your computer
 * Safe first run values: one worker, a rate limit, your real interface address, and a local target
 * Seven traffic profiles for mixed TCP, UDP, and ICMP testing
@@ -22,7 +26,13 @@ The command line is still there when you need it, but the panel is now the main 
 
 ## Requirements
 
-Qevoryx is primarily built for Linux because raw sockets are simplest there. You need root privileges, a C++17 compiler, and pthread support.
+Qevoryx is built for Linux and POSIX systems. You need root privileges, a C++17 compiler, pthread support, and ncursesw with panel support.
+
+On Debian or Ubuntu, install the development package with:
+
+```bash
+sudo apt install libncursesw5-dev
+```
 
 Windows builds are available, but raw socket support depends on your system setup. If you use Windows, run Qevoryx from an elevated shell and confirm that your platform allows the socket type Qevoryx requests. The panel also needs a terminal that supports ANSI escape sequences, such as Windows Terminal.
 
@@ -64,6 +74,14 @@ sudo ./qevoryx --tui
 * D restores the safe defaults
 * Q quits
 * Ctrl+C also quits
+
+The panel uses ncursesw windows and panels internally. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly.
+
+## Screens
+
+The main screen shows configuration, actions, status, and the latest events. Launching switches to a runtime screen with the selected profile, worker count, target, live packet count, and error count. Press `R` to return to the main screen, `S` to stop, or `Q` to quit.
+
+Press `?` at any time to open the help screen. Resetting settings opens a centered confirmation dialog so you can cancel safely.
 
 The top of the panel shows a truecolor mark made from `/assets/logobg.png`. The layout adapts to your terminal size, and the status area explains what each action does. The launch action asks you to type YES before any live traffic starts.
 

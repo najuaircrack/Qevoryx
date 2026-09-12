@@ -16,8 +16,8 @@ void Modal::set_content(const std::string& title,
     confirm_label_ = confirm_label;
 }
 
-void Modal::render(const TuiState& state,
-                   const ApplicationSnapshot& snapshot,
+void Modal::render(const TuiState&,
+                   const ApplicationSnapshot&,
                    const TuiTheme& theme) {
     WINDOW* window = this->window();
     if (window == nullptr) {

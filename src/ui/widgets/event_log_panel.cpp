@@ -5,10 +5,11 @@
 #include <ncursesw/curses.h>
 
 #include <algorithm>
+#include <string>
 
 namespace ui {
 
-void EventLogPanel::render(const TuiState& state,
+void EventLogPanel::render(const TuiState&,
                            const ApplicationSnapshot& snapshot,
                            const TuiTheme& theme) {
     WINDOW* window = this->window();

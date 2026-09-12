@@ -201,8 +201,8 @@ std::uint64_t Application::error_count() {
     return g_total_errors.load();
 }
 
-Application::Application(config::Config config)
-    : config_(std::move(config)) {
+Application::Application(config::Config config, bool install_signal_handlers)
+    : config_(std::move(config)), install_signal_handlers_(install_signal_handlers) {
     g_running = true;
     g_total_packets = 0;
     g_total_errors = 0;
@@ -211,8 +211,10 @@ Application::Application(config::Config config)
 }
 
 int Application::run() {
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    if (install_signal_handlers_) {
+        signal(SIGINT, signal_handler);
+        signal(SIGTERM, signal_handler);
+    }
 
 #if QEVORYX_PLATFORM_LINUX
     if (geteuid() != 0) {

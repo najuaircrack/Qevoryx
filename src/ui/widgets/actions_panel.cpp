@@ -7,7 +7,7 @@
 namespace ui {
 
 void ActionsPanel::render(const TuiState& state,
-                          const ApplicationSnapshot& snapshot,
+                          const ApplicationSnapshot&,
                           const TuiTheme& theme) {
     WINDOW* window = this->window();
     if (window == nullptr) {

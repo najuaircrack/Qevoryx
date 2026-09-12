@@ -130,7 +130,7 @@ void Renderer::render_help(const TuiState& state,
 }
 
 void Renderer::render_modal(const TuiState& state,
-                            const TuiLayout& layout,
+                            const TuiLayout&,
                             const TuiTheme& theme,
                             const ApplicationSnapshot& snapshot) {
     if (!state.show_reset_confirmation) {

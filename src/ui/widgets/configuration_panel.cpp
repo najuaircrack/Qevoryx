@@ -2,13 +2,14 @@
 
 #include <ncursesw/curses.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
 namespace ui {
 namespace {
 
-std::vector<std::string> labels(const config::Config& config) {
+std::vector<std::string> labels() {
     return {
         "Target IP",
         "Target Port",
@@ -39,7 +40,7 @@ std::vector<std::string> values(const config::Config& config) {
     };
 }
 
-std::vector<std::string> descriptions(const config::Config& config) {
+std::vector<std::string> descriptions() {
     return {
         "Destination address",
         "Destination port",
@@ -69,9 +70,9 @@ void ConfigurationPanel::render(const TuiState& state,
     mvwaddstr(window, 1, 2, "CONFIGURATION");
     wattroff(window, theme.header | A_BOLD);
 
-    const auto row_labels = labels(snapshot.config);
+    const auto row_labels = labels();
     const auto row_values = values(snapshot.config);
-    const auto row_descriptions = descriptions(snapshot.config);
+    const auto row_descriptions = descriptions();
 
     const int first_row = 3;
     const int row_height = 1;

@@ -2,7 +2,9 @@
 
 #include <ncursesw/curses.h>
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <string>
 
 namespace ui {
@@ -40,8 +42,6 @@ void HeaderWidget::render(const TuiState& state,
     wattroff(window, theme.accent);
 
     const int text_x = logo_x + 11;
-    const int text_width = std::max(width - text_x - 3, 20);
-
     wattron(window, theme.header | A_BOLD);
     mvwaddstr(window, 1, text_x, "QEVORYX");
     wattroff(window, theme.header | A_BOLD);

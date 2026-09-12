@@ -3,11 +3,12 @@
 #include <ncursesw/curses.h>
 
 #include <array>
+#include <utility>
 
 namespace ui {
 
-void HelpPanel::render(const TuiState& state,
-                       const ApplicationSnapshot& snapshot,
+void HelpPanel::render(const TuiState&,
+                       const ApplicationSnapshot&,
                        const TuiTheme& theme) {
     WINDOW* window = this->window();
     if (window == nullptr) {

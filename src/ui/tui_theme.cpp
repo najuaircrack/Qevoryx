@@ -24,16 +24,16 @@ void TuiTheme::initialize() {
     init_pair(9, COLOR_BLACK, COLOR_CYAN);
     init_pair(10, COLOR_CYAN, -1);
 
-    border = COLOR_PAIR(1);
-    primary = COLOR_PAIR(2);
-    secondary = COLOR_PAIR(3);
-    muted = COLOR_PAIR(4);
-    accent = COLOR_PAIR(5);
-    success = COLOR_PAIR(6);
-    warning = COLOR_PAIR(7);
-    danger = COLOR_PAIR(8);
-    selected = COLOR_PAIR(9);
-    header = COLOR_PAIR(10);
+    border = static_cast<short>(COLOR_PAIR(1));
+    primary = static_cast<short>(COLOR_PAIR(2));
+    secondary = static_cast<short>(COLOR_PAIR(3));
+    muted = static_cast<short>(COLOR_PAIR(4));
+    accent = static_cast<short>(COLOR_PAIR(5));
+    success = static_cast<short>(COLOR_PAIR(6));
+    warning = static_cast<short>(COLOR_PAIR(7));
+    danger = static_cast<short>(COLOR_PAIR(8));
+    selected = static_cast<short>(COLOR_PAIR(9));
+    header = static_cast<short>(COLOR_PAIR(10));
 }
 
 short TuiTheme::pair(TuiColorRole role) const {

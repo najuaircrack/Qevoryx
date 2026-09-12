@@ -8,7 +8,7 @@ namespace app {
 
 class Application {
 public:
-    explicit Application(config::Config config);
+    explicit Application(config::Config config, bool install_signal_handlers = true);
     int run();
 
     static void request_stop();
@@ -23,6 +23,7 @@ private:
     void shutdown();
 
     config::Config config_;
+    bool install_signal_handlers_;
     std::vector<std::thread> workers_;
 };
 

@@ -6,7 +6,7 @@
 
 namespace ui {
 
-void LiveStatusPanel::render(const TuiState& state,
+void LiveStatusPanel::render(const TuiState&,
                              const ApplicationSnapshot& snapshot,
                              const TuiTheme& theme) {
     WINDOW* window = this->window();

@@ -2,11 +2,13 @@
 
 #include <ncursesw/curses.h>
 
+#include <array>
 #include <string>
+#include <utility>
 
 namespace ui {
 
-void RuntimePanel::render(const TuiState& state,
+void RuntimePanel::render(const TuiState&,
                           const ApplicationSnapshot& snapshot,
                           const TuiTheme& theme) {
     WINDOW* window = this->window();
