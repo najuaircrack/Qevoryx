@@ -11,7 +11,8 @@ The command line is still there when you need it, but the panel is now the main 
 ## What you get
 
 * A keyboard driven control panel with configuration on one side and actions on the other
-* A compact version of the Qevoryx logo inside the panel
+* A responsive control panel that adapts to your terminal width and height
+* A truecolor version of the Qevoryx logo inside the panel
 * Settings that are remembered in a simple file on your computer
 * Safe first run values: one worker, a rate limit, your real interface address, and a local target
 * Seven traffic profiles for mixed TCP, UDP, and ICMP testing
@@ -64,7 +65,7 @@ sudo ./qevoryx --tui
 * Q quits
 * Ctrl+C also quits
 
-The top of the panel shows a compact mark made from `/assets/logobg.png`. The status area explains what each action does, and the launch action asks you to type YES before any live traffic starts.
+The top of the panel shows a truecolor mark made from `/assets/logobg.png`. The layout adapts to your terminal size, and the status area explains what each action does. The launch action asks you to type YES before any live traffic starts.
 
 ## Remembered settings
 

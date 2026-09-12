@@ -2,6 +2,7 @@
 #include "common/constants.hpp"
 #include "common/platform.hpp"
 #include "config/settings_store.hpp"
+#include "tui/logo.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,6 +20,7 @@
 #if QEVORYX_PLATFORM_WINDOWS
 #include <conio.h>
 #else
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 #endif
@@ -61,11 +63,20 @@ struct Field {
     FieldKind kind;
 };
 
+struct TerminalSize {
+    std::size_t columns{80};
+    std::size_t rows{24};
+};
+
+struct Layout {
+    std::size_t width{80};
+    std::size_t left_width{50};
+    std::size_t right_width{25};
+    bool compact{false};
+};
+
 constexpr int field_count = 10;
 constexpr int action_count = 4;
-constexpr std::size_t panel_width = 77;
-constexpr std::size_t left_panel_width = 50;
-constexpr std::size_t right_panel_width = 25;
 
 #if QEVORYX_PLATFORM_WINDOWS
 #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
@@ -84,21 +95,6 @@ const std::array<Field, field_count> fields = {{
     {"Payload maximum", FieldKind::Number},
     {"Rate limit", FieldKind::Number},
     {"Monitor", FieldKind::Choice},
-}};
-
-const std::array<const char*, 12> logo_rows = {{
-    "          #",
-    "          #### ###",
-    "      #####   #######",
-    "     ###    ###########",
-    "   #####    ####### ###",
-    "     ###  ##   ##### ###",
-    "    #### #           ###",
-    "    ####    #####   ####",
-    "     ####    #####  ###",
-    "      #####    ##### #",
-    "        ######## #####",
-    "           #####   ####",
 }};
 
 class TerminalSession {
@@ -150,6 +146,24 @@ public:
 
     TerminalSession(const TerminalSession&) = delete;
     TerminalSession& operator=(const TerminalSession&) = delete;
+
+    TerminalSize size() const {
+#if QEVORYX_PLATFORM_WINDOWS
+        CONSOLE_SCREEN_BUFFER_INFO info {};
+        if (GetConsoleScreenBufferInfo(console_, &info)) {
+            return {
+                static_cast<std::size_t>(std::max<SHORT>(1, info.dwSize.X)),
+                static_cast<std::size_t>(std::max<SHORT>(1, info.dwSize.Y))
+            };
+        }
+#else
+        winsize window {};
+        if (ioctl(STDIN_FILENO, TIOCGWINSZ, &window) == 0 && window.ws_col > 0 && window.ws_row > 0) {
+            return {static_cast<std::size_t>(window.ws_col), static_cast<std::size_t>(window.ws_row)};
+        }
+#endif
+        return {};
+    }
 
     KeyEvent read_key() const {
 #if QEVORYX_PLATFORM_WINDOWS
@@ -237,6 +251,14 @@ private:
 #endif
 };
 
+Layout make_layout(const TerminalSize& size) {
+    const std::size_t width = std::clamp(size.columns, static_cast<std::size_t>(56), static_cast<std::size_t>(120));
+    const std::size_t right_width = std::clamp(width / 4, static_cast<std::size_t>(18), static_cast<std::size_t>(30));
+    const std::size_t left_width = width - right_width - 5;
+    const bool compact = width < 84 || size.rows < 30;
+    return {width, left_width, right_width, compact};
+}
+
 std::string pad(std::string value, std::size_t width) {
     if (value.size() > width) {
         value.resize(width);
@@ -249,21 +271,21 @@ std::string repeated(char value, std::size_t count) {
     return std::string(count, value);
 }
 
-std::string top_border(const std::string& title) {
-    const std::size_t decoration_width = panel_width - title.size();
+std::string top_border(const Layout& layout, const std::string& title) {
+    const std::size_t decoration_width = layout.width - title.size();
     return "+" + title + " " + repeated('-', decoration_width) + "+";
 }
 
-std::string border() {
-    return "+" + repeated('-', panel_width + 1) + "+";
+std::string border(const Layout& layout) {
+    return "+" + repeated('-', layout.width + 1) + "+";
 }
 
-std::string content_line(const std::string& left, const std::string& right) {
-    return "| " + pad(left, left_panel_width) + "| " + pad(right, right_panel_width) + "|";
+std::string content_line(const Layout& layout, const std::string& left, const std::string& right) {
+    return "| " + pad(left, layout.left_width) + "| " + pad(right, layout.right_width) + "|";
 }
 
-std::string content_line(const std::string& text) {
-    return "| " + pad(text, panel_width) + "|";
+std::string content_line(const Layout& layout, const std::string& text) {
+    return "| " + pad(text, layout.width) + "|";
 }
 
 std::optional<std::uint64_t> parse_unsigned(std::string_view value) {
@@ -434,7 +456,27 @@ std::string action_label(int index) {
     }
 }
 
+std::string logo_line(std::size_t row, bool compact) {
+    std::string result;
+    const std::size_t width = compact ? logo::width / 2 : logo::width;
+    result.reserve(width * 48);
+
+    for (std::size_t column = 0; column < width; ++column) {
+        const std::size_t source_column = compact ? column * 2 : column;
+        const std::size_t top_row = compact ? row * 4 : row * 2;
+        const std::size_t bottom_row = compact ? row * 4 + 2 : row * 2 + 1;
+        const auto& top = logo::pixels[top_row][source_column];
+        const auto& bottom = logo::pixels[bottom_row][source_column];
+        result += "\033[38;2;" + std::to_string(top[0]) + ';' + std::to_string(top[1]) + ';' +
+                  std::to_string(top[2]) + "m\033[48;2;" + std::to_string(bottom[0]) + ';' +
+                  std::to_string(bottom[1]) + ';' + std::to_string(bottom[2]) + "m\u2580\033[0m";
+    }
+
+    return result;
+}
+
 void render(const config::Config& config,
+            const Layout& layout,
             Panel panel,
             int selected_field,
             int selected_action,
@@ -444,9 +486,11 @@ void render(const config::Config& config,
     std::ostringstream screen;
     screen << "\033[H";
 
-    screen << top_border(" QEVORYX CONTROL PANEL ") << '\n';
+    screen << top_border(layout, " QEVORYX CONTROL PANEL ") << '\n';
     const std::string settings_path = config::SettingsStore::settings_path();
-    for (std::size_t row = 0; row < logo_rows.size(); ++row) {
+    const std::size_t logo_rows = layout.compact ? logo::height / 4 : logo::height / 2;
+    const std::size_t logo_width = layout.compact ? logo::width / 2 : logo::width;
+    for (std::size_t row = 0; row < logo_rows; ++row) {
         std::string right;
         if (row == 0) right = "Qevoryx 4.0.7";
         if (row == 1) right = "Terminal control panel";
@@ -454,12 +498,12 @@ void render(const config::Config& config,
         if (row == 7) right = "Use this only where you are authorized";
         if (row == 9) right = "Safe defaults: one worker, rate limited";
 
-        screen << "| \033[40;97m" << pad(logo_rows[row], 24) << "\033[0m "
-               << pad(right, panel_width - 25) << "|\n";
+        screen << "| " << logo_line(row, layout.compact) << ' '
+               << pad(right, layout.width - logo_width - 4) << "|\n";
     }
 
-    screen << "+" << repeated('-', left_panel_width + 1)
-           << "+" << repeated('-', right_panel_width + 1) << "+\n";
+    screen << "+" << repeated('-', layout.left_width + 1)
+           << "+" << repeated('-', layout.right_width + 1) << "+\n";
 
     for (int row = 0; row < field_count; ++row) {
         std::string left;
@@ -491,7 +535,7 @@ void render(const config::Config& config,
         const bool highlighted = (panel == Panel::Configuration && row >= 2 &&
                                   selected_field == row - 2) ||
                                  (panel == Panel::Actions && row >= 2 && selected_action == row - 2);
-        const std::string line = content_line(left, right);
+        const std::string line = content_line(layout, left, right);
         if (highlighted) {
             screen << "\033[97m" << line << "\033[0m\n";
         } else {
@@ -499,42 +543,47 @@ void render(const config::Config& config,
         }
     }
 
-    screen << border() << '\n';
+    screen << border(layout) << '\n';
     const bool has_error = status.rfind("Enter ", 0) == 0 || status.rfind("Target ", 0) == 0 ||
                            status.rfind("Workers ", 0) == 0 || status.rfind("Payload ", 0) == 0 ||
                            status.rfind("Interface ", 0) == 0;
     if (has_error) {
-        screen << "\033[31m" << content_line(status) << "\033[0m\n";
+        screen << "\033[31m" << content_line(layout, status) << "\033[0m\n";
     } else {
-        screen << content_line(status) << '\n';
+        screen << content_line(layout, status) << '\n';
     }
 
-    screen << top_border(" KEYBOARD ") << '\n';
-    screen << content_line("Up and Down move. Tab switches panels. Enter edits or activates.") << '\n';
-    screen << content_line("Left and Right change values. Space cycles choices. Esc cancels.") << '\n';
-    screen << content_line("L launches. S saves. D resets. Q quits. Ctrl+C also quits.") << '\n';
-    screen << border() << '\n';
+    screen << top_border(layout, " KEYBOARD ") << '\n';
+    if (layout.compact) {
+        screen << content_line(layout, "Arrows move. Tab switches. Enter edits or activates.") << '\n';
+        screen << content_line(layout, "Space cycles. S saves. D resets. Q quits. Ctrl+C stops.") << '\n';
+    } else {
+        screen << content_line(layout, "Up and Down move. Tab switches panels. Enter edits or activates.") << '\n';
+        screen << content_line(layout, "Left and Right change values. Space cycles choices. Esc cancels.") << '\n';
+        screen << content_line(layout, "L launches. S saves. D resets. Q quits. Ctrl+C also quits.") << '\n';
+    }
+    screen << border(layout) << '\n';
 
     std::cout << screen.str() << std::flush;
 }
 
-bool confirm_launch(const config::Config& config, const TerminalSession& terminal) {
+bool confirm_launch(const config::Config& config, const TerminalSession& terminal, const Layout& layout) {
     std::string answer;
     while (true) {
         std::ostringstream screen;
         screen << "\033[H";
-        screen << top_border(" CONFIRM LIVE TRAFFIC ") << '\n';
-        screen << content_line("You are about to generate live network traffic.") << '\n';
-        screen << content_line("Target: " + config.target_ip + ":" + std::to_string(config.target_port)) << '\n';
-        screen << content_line("Profile: " + mode_label(config.packet_mode) + "    Workers: " +
+        screen << top_border(layout, " CONFIRM LIVE TRAFFIC ") << '\n';
+        screen << content_line(layout, "You are about to generate live network traffic.") << '\n';
+        screen << content_line(layout, "Target: " + config.target_ip + ":" + std::to_string(config.target_port)) << '\n';
+        screen << content_line(layout, "Profile: " + mode_label(config.packet_mode) + "    Workers: " +
                                std::to_string(config.worker_count)) << '\n';
-        screen << content_line("Source: " +
+        screen << content_line(layout, "Source: " +
                                (config.use_spoof_ips ? std::string("spoofed") : config.real_ip_interface)) << '\n';
-        screen << content_line("Confirm that you own this target or have written permission to test it.") << '\n';
-        screen << content_line("Type YES and press Enter. Press Esc to cancel.") << '\n';
-        screen << border() << '\n';
-        screen << content_line("Confirmation: " + answer + "_") << '\n';
-        screen << border() << '\n';
+        screen << content_line(layout, "Confirm that you own this target or have written permission to test it.") << '\n';
+        screen << content_line(layout, "Type YES and press Enter. Press Esc to cancel.") << '\n';
+        screen << border(layout) << '\n';
+        screen << content_line(layout, "Confirmation: " + answer + "_") << '\n';
+        screen << border(layout) << '\n';
         std::cout << screen.str() << std::flush;
 
         const KeyEvent event = terminal.read_key();
@@ -571,7 +620,8 @@ std::optional<config::Config> Tui::run() {
     std::string edit_buffer;
 
     while (true) {
-        render(config, panel, selected_field, selected_action, editing, edit_buffer, status);
+        const Layout layout = make_layout(terminal.size());
+        render(config, layout, panel, selected_field, selected_action, editing, edit_buffer, status);
         const KeyEvent event = terminal.read_key();
 
         if (event.key == Key::ControlC) {
@@ -686,7 +736,7 @@ std::optional<config::Config> Tui::run() {
                         status = error;
                         continue;
                     }
-                    if (!confirm_launch(config, terminal)) {
+                    if (!confirm_launch(config, terminal, layout)) {
                         status = "Launch cancelled.";
                         continue;
                     }

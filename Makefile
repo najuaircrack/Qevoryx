@@ -22,6 +22,7 @@ SOURCES := \
     src/transport/test_transport.cpp \
     src/monitor/console_monitor.cpp \
     src/monitor/monitor_factory.cpp \
+    src/tui/logo.cpp \
     src/tui/tui.cpp
 
 OBJECTS := $(SOURCES:.cpp=.o)

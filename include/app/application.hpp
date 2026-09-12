@@ -11,6 +11,10 @@ public:
     explicit Application(config::Config config);
     int run();
 
+    static void request_stop();
+    static std::uint64_t generated_packets();
+    static std::uint64_t error_count();
+
 private:
     bool initialize();
     bool create_workers();

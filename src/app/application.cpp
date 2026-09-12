@@ -189,8 +189,26 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
 
 namespace app {
 
+void Application::request_stop() {
+    g_running = false;
+}
+
+std::uint64_t Application::generated_packets() {
+    return g_total_packets.load();
+}
+
+std::uint64_t Application::error_count() {
+    return g_total_errors.load();
+}
+
 Application::Application(config::Config config)
-    : config_(std::move(config)) {}
+    : config_(std::move(config)) {
+    g_running = true;
+    g_total_packets = 0;
+    g_total_errors = 0;
+    g_threads_ready = 0;
+    g_threads_failed = 0;
+}
 
 int Application::run() {
     signal(SIGINT, signal_handler);
