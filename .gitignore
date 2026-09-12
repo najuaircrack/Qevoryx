@@ -1,5 +1,6 @@
 # Build artifacts
 qevoryx
+qevoryx.exe
 qevoryx-static
 stress
 stress.exe

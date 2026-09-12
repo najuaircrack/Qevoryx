@@ -7,43 +7,57 @@ on:
     branches: [main, master]
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        compiler: [g++]
-        build_type: [dynamic, static]
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++ make
+        run: sudo apt-get update && sudo apt-get install -y g++ make
 
-      - name: Build (dynamic)
-        if: matrix.build_type == 'dynamic'
+      - name: Build dynamic
         run: make clean && make
 
-      - name: Build (static)
-        if: matrix.build_type == 'static'
+      - name: Build static
         run: make clean && make static
 
-      - name: Verify binary
+      - name: Verify
         run: |
-          if [ "${{ matrix.build_type }}" = "static" ]; then
-            file qevoryx-static
-          else
-            file qevoryx
-          fi
+          file qevoryx
+          file qevoryx-static
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qevoryx-linux-amd64
+          path: |
+            qevoryx
+            qevoryx-static
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc make
+
+      - name: Build
+        shell: msys2 {0}
+        run: make clean && make
+
+      - name: Verify
+        shell: msys2 {0}
+        run: file qevoryx.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qevoryx-${{ matrix.build_type }}-linux-amd64
-          path: |
-            qevoryx
-            qevoryx-static
-          if-no-files-found: warn
+          name: qevoryx-windows-amd64
+          path: qevoryx.exe
