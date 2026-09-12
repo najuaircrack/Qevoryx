@@ -50,6 +50,8 @@ sudo ./qevoryx --tui
 
 | Flag | Description |
 |------|-------------|
+| `--help` | Show CLI help |
+| `--version` | Show version information |
 | `--tui` | Launch interactive terminal UI |
 | `--real-ip [interface]` | Use the real interface IP (default) |
 | `--spoof` | Explicitly enable spoofed source IPs |
@@ -131,7 +133,7 @@ Qevoryx/
 | No memset in hot loop | Explicit field writes only |
 | Stack-allocated aligned packets | No heap allocator in hot path |
 | yield() rate limiting | No scheduler penalty |
-| -O3 -march=native -flto | AVX2, LTO, loop unrolling |
+| -O3 -march=x86-64 -flto | Portable optimized baseline, LTO, loop unrolling |
 
 ## License
 

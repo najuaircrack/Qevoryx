@@ -8,6 +8,7 @@
 #include <optional>
 #include <string_view>
 #include <limits>
+#include <system_error>
 
 namespace config {
 
@@ -152,6 +153,8 @@ void CliParser::print_usage(const char* program_name) {
     std::cout << "    6 - TCP SYN-ACK\n";
     std::cout << "\n";
     std::cout << "  Flags:\n";
+    std::cout << "    --help                    Show this help message\n";
+    std::cout << "    --version                 Show version information\n";
     std::cout << "    --tui                     Launch interactive terminal UI\n";
     std::cout << "    --real-ip [interface]     Use the real interface IP (default)\n";
     std::cout << "    --spoof                   Explicitly enable spoofed source IPs\n";

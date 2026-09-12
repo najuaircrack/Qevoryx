@@ -3,9 +3,21 @@
 #include "tui/tui.hpp"
 #include <iostream>
 #include <exception>
+#include <cstring>
 
 int main(int argc, char** argv) {
     try {
+        for (int i = 1; i < argc; ++i) {
+            if (std::strcmp(argv[i], "--help") == 0) {
+                config::CliParser::print_usage(argv[0]);
+                return 0;
+            }
+            if (std::strcmp(argv[i], "--version") == 0) {
+                std::cout << "Qevoryx 4.0.7" << std::endl;
+                return 0;
+            }
+        }
+
         config::Config config;
 
         if (config::CliParser::has_tui_flag(argc, argv)) {

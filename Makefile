@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -O3 -march=native -mtune=native -funroll-loops -flto -Wall -Wextra -pthread -MMD -MP
+CXXFLAGS := -std=c++17 -O3 -march=x86-64 -mtune=generic -funroll-loops -flto -Wall -Wextra -pthread -MMD -MP
 INCLUDES := -Iinclude
 LDLIBS :=
 

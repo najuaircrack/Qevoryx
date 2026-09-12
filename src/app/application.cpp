@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <cerrno>
 #include <chrono>
+#include <system_error>
 
 namespace {
 
@@ -277,14 +278,8 @@ bool Application::initialize() {
 bool Application::create_workers() {
     std::cout << "\n  Starting " << config_.worker_count << " workers..." << std::endl;
 
-    std::vector<std::shared_ptr<packet::PacketStrategy>> strategies;
-    if (config_.packet_mode == config::PacketMode::Mixed) {
-        strategies.push_back(std::make_shared<packet::TcpSynStrategy>());
-        strategies.push_back(std::make_shared<packet::UdpStrategy>());
-        strategies.push_back(std::make_shared<packet::IcmpStrategy>());
-    } else {
-        strategies.push_back(packet::create_strategy(config_.packet_mode));
-    }
+    const std::shared_ptr<packet::PacketStrategy> strategy =
+        packet::create_strategy(config_.packet_mode);
 
     // Get real IP if needed
     std::uint32_t real_ip = 0;
@@ -307,17 +302,7 @@ bool Application::create_workers() {
 
     try {
     for (std::uint32_t i = 0; i < config_.worker_count; i++) {
-        std::shared_ptr<packet::PacketStrategy> strat;
-        if (config_.packet_mode == config::PacketMode::Mixed) {
-            int type = i % 3;
-            if (type == 0) strat = strategies[0];
-            else if (type == 1) strat = strategies[1];
-            else strat = strategies[2];
-        } else {
-            strat = strategies[0];
-        }
-
-        workers_.emplace_back([this, strat, i, real_ip, destination_ip]() {
+        workers_.emplace_back([this, strategy, i, real_ip, destination_ip]() {
             app::pin_current_thread(i);
 
 #if QEVORYX_PLATFORM_WINDOWS
@@ -367,7 +352,7 @@ bool Application::create_workers() {
             packet::PacketContext ctx{config_, rng, destination_ip};
 
             while (g_running) {
-                bool sent = strat->build(ctx, buffer);
+                bool sent = strategy->build(ctx, buffer);
                 if (!sent) {
                     g_total_errors++;
                     continue;
@@ -394,15 +379,19 @@ bool Application::create_workers() {
                             g_total_packets++;
                             local_packets++;
                             window_packets++;
-                        } else if (i == 0) {
+                        } else {
                             g_total_errors++;
 #if QEVORYX_PLATFORM_WINDOWS
-                        int err = WSAGetLastError();
-                        if (local_packets == 0) std::cerr << "  Worker 0: sendto() failed (WSA error " << err << ")" << std::endl;
+                            int err = WSAGetLastError();
+                            if (i == 0 && local_packets == 0) {
+                                std::cerr << "  Worker 0: sendto() failed (WSA error " << err << ")" << std::endl;
+                            }
 #else
-                        if (local_packets == 0) std::cerr << "  Worker 0: sendto() failed: " << strerror(errno) << std::endl;
+                            if (i == 0 && local_packets == 0) {
+                                std::cerr << "  Worker 0: sendto() failed: " << strerror(errno) << std::endl;
+                            }
 #endif
-                    }
+                        }
                 }
 
                 if (config_.rate_limit > 0 && window_packets >= config_.rate_limit) {
