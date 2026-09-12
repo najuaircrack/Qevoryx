@@ -36,4 +36,39 @@ std::uint16_t tcp_checksum(
     return ~sum;
 }
 
+std::uint16_t udp_checksum(
+    const void* udp_data,
+    std::size_t udp_length,
+    std::uint32_t source,
+    std::uint32_t destination) noexcept
+{
+    std::uint32_t sum = 0;
+    sum += (source >> 16) & 0xFFFF;
+    sum += source & 0xFFFF;
+    sum += (destination >> 16) & 0xFFFF;
+    sum += destination & 0xFFFF;
+    sum += htons(17); // IPPROTO_UDP
+    sum += htons(static_cast<std::uint16_t>(udp_length));
+
+    const auto* w = static_cast<const std::uint16_t*>(udp_data);
+    int nleft = static_cast<int>(udp_length);
+    while (nleft > 1) { sum += *w++; nleft -= 2; }
+    if (nleft > 0) sum += *reinterpret_cast<const std::uint8_t*>(w);
+    while (sum >> 16) sum = (sum & 0xFFFF) + (sum >> 16);
+    return ~sum;
+}
+
+std::uint16_t icmp_checksum(
+    const void* icmp_data,
+    std::size_t icmp_length) noexcept
+{
+    const auto* ptr = static_cast<const std::uint16_t*>(icmp_data);
+    std::uint32_t sum = 0;
+    int len = static_cast<int>(icmp_length);
+    while (len > 1) { sum += *ptr++; len -= 2; }
+    if (len > 0) sum += *reinterpret_cast<const std::uint8_t*>(ptr);
+    while (sum >> 16) sum = (sum & 0xFFFF) + (sum >> 16);
+    return ~sum;
+}
+
 } // namespace protocol

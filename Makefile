@@ -10,6 +10,10 @@ SOURCES := \
     src/packet/packet.cpp \
     src/packet/tcp_syn_strategy.cpp \
     src/packet/udp_strategy.cpp \
+    src/packet/icmp_strategy.cpp \
+    src/packet/ack_strategy.cpp \
+    src/packet/rst_strategy.cpp \
+    src/packet/synack_strategy.cpp \
     src/protocol/checksum.cpp \
     src/random/fast_random.cpp \
     src/transport/file_transport.cpp \

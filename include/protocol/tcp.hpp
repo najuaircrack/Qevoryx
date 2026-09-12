@@ -19,6 +19,9 @@ struct TcpHeader {
 constexpr std::uint8_t TCP_DATA_OFFSET_5 = 0x50;
 constexpr std::uint8_t TCP_DATA_OFFSET_6 = 0x60;
 constexpr std::uint8_t TCP_FLAG_SYN = 0x02;
+constexpr std::uint8_t TCP_FLAG_ACK = 0x10;
+constexpr std::uint8_t TCP_FLAG_RST = 0x04;
+constexpr std::uint8_t TCP_FLAG_SYN_ACK = 0x12;
 constexpr std::uint16_t TCP_HEADER_SIZE = sizeof(TcpHeader);
 constexpr std::uint8_t TCP_OPTION_MSS_KIND = 2;
 constexpr std::uint8_t TCP_OPTION_MSS_LEN = 4;
