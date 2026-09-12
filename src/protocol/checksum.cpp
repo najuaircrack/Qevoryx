@@ -1,9 +1,10 @@
 #include "protocol/checksum.hpp"
 #include "common/platform.hpp"
+#include <cstring>
 
 namespace protocol {
 
-std::uint16_t internet_checksum(const void* data, std::size_t length) {
+std::uint16_t internet_checksum(const void* data, std::size_t length) noexcept {
     const auto* ptr = static_cast<const std::uint16_t*>(data);
     std::uint32_t sum = 0;
 
@@ -24,62 +25,43 @@ std::uint16_t internet_checksum(const void* data, std::size_t length) {
 }
 
 std::uint16_t tcp_checksum(const void* tcp_header, std::size_t tcp_length,
-                           std::uint32_t src_ip, std::uint32_t dst_ip) {
-    struct PseudoHeader {
-        std::uint32_t src;
-        std::uint32_t dst;
-        std::uint8_t zero;
-        std::uint8_t protocol;
-        std::uint16_t tcp_length;
-    };
+                           std::uint32_t src_ip, std::uint32_t dst_ip) noexcept {
+    // Pseudo header + TCP data fit comfortably in 128 bytes
+    std::uint8_t buffer[128];
 
-    PseudoHeader pseudo{};
-    pseudo.src = src_ip;
-    pseudo.dst = dst_ip;
-    pseudo.zero = 0;
-    pseudo.protocol = 6; // IPPROTO_TCP
-    pseudo.tcp_length = htons(static_cast<std::uint16_t>(tcp_length));
+    // Build pseudo header in first 12 bytes
+    auto* pseudo = reinterpret_cast<std::uint32_t*>(buffer);
+    pseudo[0] = src_ip;
+    pseudo[1] = dst_ip;
+    buffer[8] = 0;
+    buffer[9] = 6; // IPPROTO_TCP
+    auto* len_ptr = reinterpret_cast<std::uint16_t*>(buffer + 10);
+    len_ptr[0] = htons(static_cast<std::uint16_t>(tcp_length));
 
-    // Calculate total checksum data length
-    std::size_t total_len = sizeof(PseudoHeader) + tcp_length;
+    // Copy TCP data after pseudo header
+    std::memcpy(buffer + 12, tcp_header, tcp_length);
 
-    // Allocate on stack and copy
-    auto* buffer = static_cast<std::uint8_t*>(__builtin_alloca(total_len));
-    std::memcpy(buffer, &pseudo, sizeof(PseudoHeader));
-    std::memcpy(buffer + sizeof(PseudoHeader), tcp_header, tcp_length);
-
-    std::uint16_t result = internet_checksum(buffer, total_len);
-    return result;
+    return internet_checksum(buffer, 12 + tcp_length);
 }
 
 std::uint16_t udp_checksum(const void* udp_header, std::size_t udp_length,
-                           std::uint32_t src_ip, std::uint32_t dst_ip) {
-    struct PseudoHeader {
-        std::uint32_t src;
-        std::uint32_t dst;
-        std::uint8_t zero;
-        std::uint8_t protocol;
-        std::uint16_t udp_length;
-    };
+                           std::uint32_t src_ip, std::uint32_t dst_ip) noexcept {
+    std::uint8_t buffer[128];
 
-    PseudoHeader pseudo{};
-    pseudo.src = src_ip;
-    pseudo.dst = dst_ip;
-    pseudo.zero = 0;
-    pseudo.protocol = 17; // IPPROTO_UDP
-    pseudo.udp_length = htons(static_cast<std::uint16_t>(udp_length));
+    auto* pseudo = reinterpret_cast<std::uint32_t*>(buffer);
+    pseudo[0] = src_ip;
+    pseudo[1] = dst_ip;
+    buffer[8] = 0;
+    buffer[9] = 17; // IPPROTO_UDP
+    auto* len_ptr = reinterpret_cast<std::uint16_t*>(buffer + 10);
+    len_ptr[0] = htons(static_cast<std::uint16_t>(udp_length));
 
-    std::size_t total_len = sizeof(PseudoHeader) + udp_length;
+    std::memcpy(buffer + 12, udp_header, udp_length);
 
-    auto* buffer = static_cast<std::uint8_t*>(__builtin_alloca(total_len));
-    std::memcpy(buffer, &pseudo, sizeof(PseudoHeader));
-    std::memcpy(buffer + sizeof(PseudoHeader), udp_header, udp_length);
-
-    std::uint16_t result = internet_checksum(buffer, total_len);
-    return result;
+    return internet_checksum(buffer, 12 + udp_length);
 }
 
-std::uint16_t icmp_checksum(const void* icmp_header, std::size_t icmp_length) {
+std::uint16_t icmp_checksum(const void* icmp_header, std::size_t icmp_length) noexcept {
     return internet_checksum(icmp_header, icmp_length);
 }
 

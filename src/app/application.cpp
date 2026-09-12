@@ -27,12 +27,18 @@
 #include <memory>
 #include <csignal>
 #include <cstring>
+#include <cstdlib>
 
 namespace {
 
 std::atomic<bool> g_running{true};
 std::atomic<std::uint64_t> g_total_packets{0};
 std::atomic<std::uint32_t> g_threads_ready{0};
+
+[[maybe_unused]] void run_cmd(const char* cmd) {
+    int ret = std::system(cmd);
+    (void)ret;
+}
 
 void signal_handler(int) {
     std::cout << "\n  STOPPING..." << std::endl;
@@ -179,17 +185,17 @@ void Application::initialize() {
 
 #if QEVORYX_PLATFORM_LINUX
     // Kernel tuning (Linux only)
-    (void)system("sysctl -w net.ipv4.tcp_tw_reuse=1 > /dev/null 2>&1");
-    (void)system("sysctl -w net.ipv4.tcp_fin_timeout=5 > /dev/null 2>&1");
-    (void)system("sysctl -w net.ipv4.tcp_timestamps=0 > /dev/null 2>&1");
-    (void)system("sysctl -w net.core.rmem_max=268435456 > /dev/null 2>&1");
-    (void)system("sysctl -w net.core.wmem_max=268435456 > /dev/null 2>&1");
-    (void)system("sysctl -w net.core.netdev_max_backlog=500000 > /dev/null 2>&1");
-    (void)system("sysctl -w net.ipv4.ip_local_port_range=\"1024 65535\" > /dev/null 2>&1");
-    (void)system("sysctl -w net.ipv4.conf.all.rp_filter=0 > /dev/null 2>&1");
-    (void)system("sysctl -w net.ipv4.tcp_max_syn_backlog=500000 > /dev/null 2>&1");
-    (void)system("sysctl -w net.ipv4.tcp_syncookies=0 > /dev/null 2>&1");
-    (void)system("ulimit -n 2000000 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.ipv4.tcp_tw_reuse=1 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.ipv4.tcp_fin_timeout=5 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.ipv4.tcp_timestamps=0 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.core.rmem_max=268435456 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.core.wmem_max=268435456 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.core.netdev_max_backlog=500000 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.ipv4.ip_local_port_range=\"1024 65535\" > /dev/null 2>&1");
+    run_cmd("sysctl -w net.ipv4.conf.all.rp_filter=0 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.ipv4.tcp_max_syn_backlog=500000 > /dev/null 2>&1");
+    run_cmd("sysctl -w net.ipv4.tcp_syncookies=0 > /dev/null 2>&1");
+    run_cmd("ulimit -n 2000000 > /dev/null 2>&1");
 #else
     // Windows: set send buffer size via setsockopt (done per-socket below)
 #endif
