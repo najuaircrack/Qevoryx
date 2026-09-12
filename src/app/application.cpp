@@ -4,6 +4,9 @@
 #include "common/types.hpp"
 #include "common/platform.hpp"
 #include "config/config.hpp"
+#include "protocol/ipv4.hpp"
+#include "protocol/tcp.hpp"
+#include "protocol/checksum.hpp"
 #include "packet/packet.hpp"
 #include "packet/packet_strategy.hpp"
 #include "packet/tcp_syn_strategy.hpp"
@@ -176,17 +179,17 @@ void Application::initialize() {
 
 #if QEVORYX_PLATFORM_LINUX
     // Kernel tuning (Linux only)
-    system("sysctl -w net.ipv4.tcp_tw_reuse=1 > /dev/null 2>&1");
-    system("sysctl -w net.ipv4.tcp_fin_timeout=5 > /dev/null 2>&1");
-    system("sysctl -w net.ipv4.tcp_timestamps=0 > /dev/null 2>&1");
-    system("sysctl -w net.core.rmem_max=268435456 > /dev/null 2>&1");
-    system("sysctl -w net.core.wmem_max=268435456 > /dev/null 2>&1");
-    system("sysctl -w net.core.netdev_max_backlog=500000 > /dev/null 2>&1");
-    system("sysctl -w net.ipv4.ip_local_port_range=\"1024 65535\" > /dev/null 2>&1");
-    system("sysctl -w net.ipv4.conf.all.rp_filter=0 > /dev/null 2>&1");
-    system("sysctl -w net.ipv4.tcp_max_syn_backlog=500000 > /dev/null 2>&1");
-    system("sysctl -w net.ipv4.tcp_syncookies=0 > /dev/null 2>&1");
-    system("ulimit -n 2000000 > /dev/null 2>&1");
+    (void)system("sysctl -w net.ipv4.tcp_tw_reuse=1 > /dev/null 2>&1");
+    (void)system("sysctl -w net.ipv4.tcp_fin_timeout=5 > /dev/null 2>&1");
+    (void)system("sysctl -w net.ipv4.tcp_timestamps=0 > /dev/null 2>&1");
+    (void)system("sysctl -w net.core.rmem_max=268435456 > /dev/null 2>&1");
+    (void)system("sysctl -w net.core.wmem_max=268435456 > /dev/null 2>&1");
+    (void)system("sysctl -w net.core.netdev_max_backlog=500000 > /dev/null 2>&1");
+    (void)system("sysctl -w net.ipv4.ip_local_port_range=\"1024 65535\" > /dev/null 2>&1");
+    (void)system("sysctl -w net.ipv4.conf.all.rp_filter=0 > /dev/null 2>&1");
+    (void)system("sysctl -w net.ipv4.tcp_max_syn_backlog=500000 > /dev/null 2>&1");
+    (void)system("sysctl -w net.ipv4.tcp_syncookies=0 > /dev/null 2>&1");
+    (void)system("ulimit -n 2000000 > /dev/null 2>&1");
 #else
     // Windows: set send buffer size via setsockopt (done per-socket below)
 #endif
