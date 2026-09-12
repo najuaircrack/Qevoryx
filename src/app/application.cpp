@@ -123,6 +123,7 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
 #else
 // Windows: placeholder — real IP detection requires GetAdaptersAddresses
 std::uint32_t get_real_ip(const std::string& interface_name) {
+    (void)interface_name;
     return 0;
 }
 #endif

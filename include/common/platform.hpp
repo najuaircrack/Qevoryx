@@ -18,7 +18,9 @@
     #include <ws2tcpip.h>
     #include <io.h>
     #include <process.h>
-    #pragma comment(lib, "Ws2_32.lib")
+    #ifdef _MSC_VER
+        #pragma comment(lib, "Ws2_32.lib")
+    #endif
 
     // Windows doesn't have close() for sockets — use closesocket()
     #define QEVORYX_CLOSESOCK closesocket
