@@ -13,4 +13,14 @@ std::uint16_t tcp_checksum(
     std::uint32_t source,
     std::uint32_t destination) noexcept;
 
+std::uint16_t udp_checksum(
+    const void* udp_data,
+    std::size_t udp_length,
+    std::uint32_t source,
+    std::uint32_t destination) noexcept;
+
+std::uint16_t icmp_checksum(
+    const void* icmp_data,
+    std::size_t icmp_length) noexcept;
+
 } // namespace protocol

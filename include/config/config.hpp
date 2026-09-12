@@ -8,7 +8,11 @@ namespace config {
 enum class PacketMode {
     Mixed,
     Tcp,
-    Udp
+    Udp,
+    Icmp,
+    Ack,
+    Rst,
+    SynAck
 };
 
 enum class MonitorMode {
@@ -25,6 +29,8 @@ struct Config {
     std::uint32_t payload_min{512};
     std::uint32_t payload_max{1400};
     std::uint32_t rate_limit{0};
+    bool use_spoof_ips{true};
+    std::string real_ip_interface{"eth0"};
 };
 
 } // namespace config
