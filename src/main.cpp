@@ -1,6 +1,7 @@
 #include "config/cli_parser.hpp"
 #include "app/application.hpp"
 #include "tui/tui.hpp"
+#include <iostream>
 
 int main(int argc, char** argv) {
     config::Config config;

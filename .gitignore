@@ -6,6 +6,9 @@ stress.exe
 *.o
 *.obj
 
+# Generated files
+SPEC.txt
+
 # IDE
 .vscode/
 .idea/
