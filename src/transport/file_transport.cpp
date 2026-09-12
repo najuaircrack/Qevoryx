@@ -11,8 +11,8 @@
 #else
 #include <unistd.h>
 #define QEVORYX_OPEN(path, flags, mode) open(path, flags, mode)
-#define QEVORYX_CLOSE(fd) close(fd)
-#define QEVORYX_WRITE(fd, buf, len) write(fd, buf, len)
+#define QEVORYX_CLOSE(fd) ::close(fd)
+#define QEVORYX_WRITE(fd, buf, len) ::write(fd, buf, len)
 #endif
 
 namespace transport {
