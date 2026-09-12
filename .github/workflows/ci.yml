@@ -42,3 +42,43 @@ jobs:
           path: |
             qevoryx
             qevoryx-static
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc make mingw-w64-x86_64-ncurses
+
+      - name: Build dynamic
+        shell: msys2 {0}
+        run: make
+
+      - name: Build static
+        shell: msys2 {0}
+        run: make static
+
+      - name: Smoke test
+        shell: msys2 {0}
+        run: |
+          ./qevoryx.exe --help
+          ./qevoryx.exe --version
+
+      - name: Verify
+        shell: msys2 {0}
+        run: |
+          file qevoryx.exe
+          file qevoryx-static.exe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qevoryx-windows-amd64
+          path: |
+            qevoryx-static.exe

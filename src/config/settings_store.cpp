@@ -28,23 +28,11 @@ std::string trim(std::string value) {
 }
 
 std::optional<std::string> environment_value(const char* name) {
-#if defined(_MSC_VER)
-    char* value = nullptr;
-    std::size_t size = 0;
-    if (_dupenv_s(&value, &size, name) != 0 || value == nullptr) {
-        return std::nullopt;
-    }
-
-    std::string result(value);
-    std::free(value);
-    return result;
-#else
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
         return std::nullopt;
     }
     return std::string(value);
-#endif
 }
 
 std::optional<std::uint64_t> parse_unsigned(std::string_view value) {

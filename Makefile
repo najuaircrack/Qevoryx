@@ -53,15 +53,15 @@ UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
 ifneq (,$(findstring MINGW,$(UNAME_S)))
     TARGET := qevoryx.exe
     TARGET_STATIC := qevoryx-static.exe
-    LDLIBS += -lws2_32 -liphlpapi
+    LDLIBS += -lws2_32 -liphlpapi -lpanelw -lncursesw
 endif
 ifneq (,$(findstring MSYS,$(UNAME_S)))
     TARGET := qevoryx.exe
     TARGET_STATIC := qevoryx-static.exe
-    LDLIBS += -lws2_32 -liphlpapi
+    LDLIBS += -lws2_32 -liphlpapi -lpanelw -lncursesw
 endif
 ifeq ($(UNAME_S),Linux)
-    LDLIBS += -lncursesw -lpanelw
+    LDLIBS += -lpanelw -lncursesw
 endif
 
 .PHONY: all static clean

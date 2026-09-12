@@ -26,13 +26,21 @@ The command line is still there when you need it, but the panel is now the main 
 
 ## Requirements
 
-Qevoryx is built for Linux and POSIX systems. You need root privileges, a C++17 compiler, pthread support, and ncursesw with panel support.
+Linux is the primary platform. You need root privileges, a C++17 compiler, pthread support, and ncursesw with panel support. Windows binaries are built with MSYS2 MinGW64 and use the same ncursesw interface.
 
 On Debian or Ubuntu, install the development package with:
 
 ```bash
 sudo apt install libncursesw5-dev
 ```
+
+On Windows, install the ncurses package in an MSYS2 MinGW64 shell:
+
+```bash
+pacman -S mingw-w64-x86_64-ncurses
+```
+
+Run Qevoryx from an elevated terminal when the tool needs raw socket access.
 
 Use a terminal that can show UTF-8 characters. Qevoryx falls back to simpler arrows and status marks when your locale does not use UTF-8.
 
@@ -94,6 +102,7 @@ The settings file lives here:
 
 * Default location: `$HOME/.config/qevoryx/settings.ini`
 * Custom location: `$XDG_CONFIG_HOME/qevoryx/settings.ini`
+* Windows: `%APPDATA%\Qevoryx\settings.ini`
 
 If the file is missing or contains an invalid value, Qevoryx quietly returns to the safe defaults instead of guessing.
 
