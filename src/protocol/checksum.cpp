@@ -1,64 +1,73 @@
 #include "protocol/checksum.hpp"
 #include "common/platform.hpp"
 #include <cstring>
+#include <array>
 
 namespace protocol {
 
-std::uint16_t internet_checksum(const void* data, std::size_t length) noexcept {
-    const auto* ptr = static_cast<const std::uint16_t*>(data);
+namespace {
+
+std::uint32_t checksum_sum(const std::uint8_t* data, std::size_t length) noexcept {
     std::uint32_t sum = 0;
+    std::size_t offset = 0;
 
-    while (length > 1) {
-        sum += *ptr++;
-        length -= 2;
+    while (offset + 1 < length) {
+        std::uint16_t word = 0;
+        std::memcpy(&word, data + offset, sizeof(word));
+        sum += word;
+        offset += 2;
     }
 
-    if (length == 1) {
-        sum += *reinterpret_cast<const std::uint8_t*>(ptr);
+    if (offset < length) {
+        sum += static_cast<std::uint16_t>(data[offset] << 8);
     }
 
+    return sum;
+}
+
+std::uint16_t fold_checksum(std::uint32_t sum) noexcept {
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-
     return static_cast<std::uint16_t>(~sum);
+}
+
+} // namespace
+
+std::uint16_t internet_checksum(const void* data, std::size_t length) noexcept {
+    return fold_checksum(checksum_sum(static_cast<const std::uint8_t*>(data), length));
 }
 
 std::uint16_t tcp_checksum(const void* tcp_header, std::size_t tcp_length,
                            std::uint32_t src_ip, std::uint32_t dst_ip) noexcept {
-    // Pseudo header + TCP data fit comfortably in 128 bytes
-    std::uint8_t buffer[128];
+    std::array<std::uint8_t, 12> pseudo{};
+    std::memcpy(pseudo.data() + 0, &src_ip, sizeof(src_ip));
+    std::memcpy(pseudo.data() + 4, &dst_ip, sizeof(dst_ip));
+    pseudo[8] = 0;
+    pseudo[9] = 6;
+    const std::uint16_t network_length = htons(static_cast<std::uint16_t>(tcp_length));
+    std::memcpy(pseudo.data() + 10, &network_length, sizeof(network_length));
 
-    // Build pseudo header in first 12 bytes
-    auto* pseudo = reinterpret_cast<std::uint32_t*>(buffer);
-    pseudo[0] = src_ip;
-    pseudo[1] = dst_ip;
-    buffer[8] = 0;
-    buffer[9] = 6; // IPPROTO_TCP
-    auto* len_ptr = reinterpret_cast<std::uint16_t*>(buffer + 10);
-    len_ptr[0] = htons(static_cast<std::uint16_t>(tcp_length));
-
-    // Copy TCP data after pseudo header
-    std::memcpy(buffer + 12, tcp_header, tcp_length);
-
-    return internet_checksum(buffer, 12 + tcp_length);
+    const auto* tcp_bytes = static_cast<const std::uint8_t*>(tcp_header);
+    const std::uint32_t sum = checksum_sum(pseudo.data(), pseudo.size()) +
+                              checksum_sum(tcp_bytes, tcp_length);
+    return fold_checksum(sum);
 }
 
 std::uint16_t udp_checksum(const void* udp_header, std::size_t udp_length,
                            std::uint32_t src_ip, std::uint32_t dst_ip) noexcept {
-    std::uint8_t buffer[128];
+    std::array<std::uint8_t, 12> pseudo{};
+    std::memcpy(pseudo.data() + 0, &src_ip, sizeof(src_ip));
+    std::memcpy(pseudo.data() + 4, &dst_ip, sizeof(dst_ip));
+    pseudo[8] = 0;
+    pseudo[9] = 17;
+    const std::uint16_t network_length = htons(static_cast<std::uint16_t>(udp_length));
+    std::memcpy(pseudo.data() + 10, &network_length, sizeof(network_length));
 
-    auto* pseudo = reinterpret_cast<std::uint32_t*>(buffer);
-    pseudo[0] = src_ip;
-    pseudo[1] = dst_ip;
-    buffer[8] = 0;
-    buffer[9] = 17; // IPPROTO_UDP
-    auto* len_ptr = reinterpret_cast<std::uint16_t*>(buffer + 10);
-    len_ptr[0] = htons(static_cast<std::uint16_t>(udp_length));
-
-    std::memcpy(buffer + 12, udp_header, udp_length);
-
-    return internet_checksum(buffer, 12 + udp_length);
+    const auto* udp_bytes = static_cast<const std::uint8_t*>(udp_header);
+    const std::uint32_t sum = checksum_sum(pseudo.data(), pseudo.size()) +
+                              checksum_sum(udp_bytes, udp_length);
+    return fold_checksum(sum);
 }
 
 std::uint16_t icmp_checksum(const void* icmp_header, std::size_t icmp_length) noexcept {

@@ -29,6 +29,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cerrno>
+#include <chrono>
 
 namespace {
 
@@ -42,7 +43,6 @@ std::atomic<std::uint32_t> g_threads_ready{0};
 }
 
 void signal_handler(int) {
-    std::cout << "\n  STOPPING..." << std::endl;
     g_running = false;
 }
 
@@ -245,13 +245,14 @@ bool Application::initialize() {
 void Application::create_workers() {
     std::cout << "\n  Starting " << config_.worker_count << " workers..." << std::endl;
 
-    // Pre-create all strategies
-    auto tcp_strategy = std::make_unique<packet::TcpSynStrategy>();
-    auto udp_strategy = std::make_unique<packet::UdpStrategy>();
-    auto icmp_strategy = std::make_unique<packet::IcmpStrategy>();
-    auto ack_strategy = std::make_unique<packet::AckStrategy>();
-    auto rst_strategy = std::make_unique<packet::RstStrategy>();
-    auto synack_strategy = std::make_unique<packet::SynAckStrategy>();
+    std::vector<std::shared_ptr<packet::PacketStrategy>> strategies;
+    if (config_.packet_mode == config::PacketMode::Mixed) {
+        strategies.push_back(std::make_shared<packet::TcpSynStrategy>());
+        strategies.push_back(std::make_shared<packet::UdpStrategy>());
+        strategies.push_back(std::make_shared<packet::IcmpStrategy>());
+    } else {
+        strategies.push_back(packet::create_strategy(config_.packet_mode));
+    }
 
     // Get real IP if needed
     std::uint32_t real_ip = 0;
@@ -259,29 +260,41 @@ void Application::create_workers() {
         real_ip = get_real_ip(config_.real_ip_interface);
     }
 
-    std::vector<std::thread> workers;
-    workers.reserve(config_.worker_count);
+    workers_.clear();
+    workers_.reserve(config_.worker_count);
+
+    std::uint32_t destination_ip = 0;
+    {
+        struct in_addr addr {};
+        if (inet_pton(AF_INET, config_.target_ip.c_str(), &addr) != 1) {
+            std::cerr << "  Invalid target IP: " << config_.target_ip << std::endl;
+            return;
+        }
+        destination_ip = addr.s_addr;
+    }
 
     for (std::uint32_t i = 0; i < config_.worker_count; i++) {
-        packet::PacketStrategy* strat = nullptr;
+        std::shared_ptr<packet::PacketStrategy> strat;
         if (config_.packet_mode == config::PacketMode::Mixed) {
             int type = i % 3;
-            if (type == 0) strat = tcp_strategy.get();
-            else if (type == 1) strat = udp_strategy.get();
-            else strat = icmp_strategy.get();
+            if (type == 0) strat = strategies[0];
+            else if (type == 1) strat = strategies[1];
+            else strat = strategies[2];
         } else {
-            strat = packet::create_strategy(config_.packet_mode).release();
+            strat = strategies[0];
         }
 
-        workers.emplace_back([this, strat, i, real_ip]() {
+        workers_.emplace_back([this, strat, i, real_ip, destination_ip]() {
             app::pin_current_thread(i);
 
 #if QEVORYX_PLATFORM_WINDOWS
-            int sock = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+            SOCKET sock = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+            const bool socket_failed = (sock == INVALID_SOCKET);
 #else
             int sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+            const bool socket_failed = (sock < 0);
 #endif
-            if (sock < 0) {
+            if (socket_failed) {
 #if QEVORYX_PLATFORM_WINDOWS
                 int err = WSAGetLastError();
                 if (i == 0) std::cerr << "  Worker 0: socket() failed (WSA error " << err << ")" << std::endl;
@@ -293,21 +306,30 @@ void Application::create_workers() {
             }
 
             int one = 1;
-            setsockopt(sock, IPPROTO_IP, IP_HDRINCL, reinterpret_cast<const char*>(&one), sizeof(one));
-            setsockopt(sock, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<const char*>(&common::SEND_BUF_SIZE), sizeof(common::SEND_BUF_SIZE));
+            if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, reinterpret_cast<const char*>(&one), sizeof(one)) != 0 ||
+                setsockopt(sock, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<const char*>(&common::SEND_BUF_SIZE), sizeof(common::SEND_BUF_SIZE)) != 0) {
+                if (i == 0) {
+                    std::cerr << "  Worker 0: setsockopt() failed" << std::endl;
+                }
+                QEVORYX_CLOSESOCK(sock);
+                g_threads_ready++;
+                return;
+            }
 
             g_threads_ready++;
 
             randomgen::FastRandom rng(std::time(nullptr) ^ (i * 0x9e3779b97f4a7c15ULL));
             common::PacketBuffer buffer;
-            std::uint32_t local_pps = 0;
+            std::uint64_t local_packets = 0;
+            auto window_start = std::chrono::steady_clock::now();
+            std::uint64_t window_packets = 0;
 
             struct sockaddr_in sin{};
             sin.sin_family = AF_INET;
             sin.sin_port = htons(config_.target_port);
-            inet_pton(AF_INET, config_.target_ip.c_str(), &sin.sin_addr);
+            sin.sin_addr.s_addr = destination_ip;
 
-            packet::PacketContext ctx{config_, rng};
+            packet::PacketContext ctx{config_, rng, destination_ip};
 
             while (g_running) {
                 bool sent = strat->build(ctx, buffer);
@@ -328,23 +350,29 @@ void Application::create_workers() {
 
                 if (sent) {
                     int ret = sendto(sock, reinterpret_cast<const char*>(buffer.ptr()), buffer.size, 0,
-                                     reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin));
+                                   reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin));
                     if (ret > 0) {
                         g_total_packets++;
-                        local_pps++;
+                        local_packets++;
+                        window_packets++;
                     } else if (i == 0) {
 #if QEVORYX_PLATFORM_WINDOWS
                         int err = WSAGetLastError();
-                        if (local_pps == 0) std::cerr << "  Worker 0: sendto() failed (WSA error " << err << ")" << std::endl;
+                        if (local_packets == 0) std::cerr << "  Worker 0: sendto() failed (WSA error " << err << ")" << std::endl;
 #else
-                        if (local_pps == 0) std::cerr << "  Worker 0: sendto() failed: " << strerror(errno) << std::endl;
+                        if (local_packets == 0) std::cerr << "  Worker 0: sendto() failed: " << strerror(errno) << std::endl;
 #endif
                     }
                 }
 
-                if (config_.rate_limit > 0 && local_pps > config_.rate_limit) {
-                    while (local_pps > config_.rate_limit && g_running)
-                        std::this_thread::yield();
+                if (config_.rate_limit > 0 && window_packets >= config_.rate_limit) {
+                    const auto window_end = window_start + std::chrono::seconds(1);
+                    const auto now = std::chrono::steady_clock::now();
+                    if (now < window_end && g_running) {
+                        std::this_thread::sleep_until(window_end);
+                    }
+                    window_start = window_end;
+                    window_packets = 0;
                 }
             }
 
@@ -362,9 +390,6 @@ void Application::create_workers() {
 
     std::cout << "  All workers ready - generating packets!\n" << std::endl;
 
-    for (auto& t : workers) {
-        if (t.joinable()) t.detach();
-    }
 }
 
 void Application::start_monitor() {
@@ -389,6 +414,12 @@ void Application::wait_for_shutdown() {
 }
 
 void Application::shutdown() {
+    for (auto& worker : workers_) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+
     std::cout << "\n\n  Final total: " << g_total_packets.load() << " packets" << std::endl;
 }
 

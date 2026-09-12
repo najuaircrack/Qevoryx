@@ -13,13 +13,20 @@ namespace packet {
 bool UdpStrategy::build(const PacketContext& ctx, common::PacketBuffer& output) {
     output.clear();
 
+    const std::size_t max_payload = common::MAX_PACKET_SIZE -
+                                    protocol::IPv4_HEADER_SIZE -
+                                    protocol::UDP_HEADER_SIZE;
+    if (ctx.config.payload_min > ctx.config.payload_max ||
+        ctx.config.payload_max > max_payload) {
+        return false;
+    }
+
     auto* iph = reinterpret_cast<protocol::IPv4Header*>(output.ptr());
     auto* udph = reinterpret_cast<protocol::UdpHeader*>(output.ptr() + protocol::IPv4_HEADER_SIZE);
 
     std::uint32_t src_ip = ctx.rng.next();
     std::uint16_t sport = htons(ctx.rng.range(1024, 65535));
-    struct in_addr dst_addr;
-    inet_pton(AF_INET, ctx.config.target_ip.c_str(), &dst_addr);
+    const std::uint32_t dst_ip = ctx.destination_ip;
 
     int data_len = ctx.rng.range(ctx.config.payload_min, ctx.config.payload_max);
     std::size_t payload_offset = protocol::IPv4_HEADER_SIZE + protocol::UDP_HEADER_SIZE;
@@ -47,7 +54,7 @@ bool UdpStrategy::build(const PacketContext& ctx, common::PacketBuffer& output) 
     iph->protocol = protocol::IPPROTO_VALUE_UDP;
     iph->checksum = 0;
     iph->source = src_ip;
-    iph->destination = dst_addr.s_addr;
+    iph->destination = dst_ip;
 
     // UDP header
     udph->source_port = sport;

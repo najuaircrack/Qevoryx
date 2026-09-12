@@ -20,8 +20,7 @@ bool TcpSynStrategy::build(const PacketContext& ctx, common::PacketBuffer& outpu
     std::uint32_t src_ip = ctx.rng.next();
     std::uint16_t sport = htons(ctx.rng.range(1024, 65535));
     std::uint32_t seq = ctx.rng.next32();
-    struct in_addr dst_addr;
-    inet_pton(AF_INET, ctx.config.target_ip.c_str(), &dst_addr);
+    const std::uint32_t dst_ip = ctx.destination_ip;
 
     // IP header
     iph->version_ihl = protocol::IPv4_VERSION_IHL;
@@ -32,7 +31,7 @@ bool TcpSynStrategy::build(const PacketContext& ctx, common::PacketBuffer& outpu
     iph->protocol = protocol::IPPROTO_VALUE_TCP;
     iph->checksum = 0;
     iph->source = src_ip;
-    iph->destination = dst_addr.s_addr;
+    iph->destination = dst_ip;
 
     // TCP header
     tcph->source_port = sport;
@@ -62,7 +61,7 @@ bool TcpSynStrategy::build(const PacketContext& ctx, common::PacketBuffer& outpu
     tcph->checksum = protocol::tcp_checksum(
         output.ptr() + protocol::IPv4_HEADER_SIZE,
         pkt_len - protocol::IPv4_HEADER_SIZE,
-        src_ip, dst_addr.s_addr);
+            src_ip, dst_ip);
 
     output.size = pkt_len;
     return true;

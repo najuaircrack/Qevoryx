@@ -15,6 +15,7 @@ namespace packet {
 struct PacketContext {
     const config::Config& config;
     randomgen::FastRandom& rng;
+    std::uint32_t destination_ip;
 };
 
 class PacketStrategy {

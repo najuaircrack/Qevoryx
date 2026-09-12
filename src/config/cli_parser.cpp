@@ -1,7 +1,13 @@
 #include "config/cli_parser.hpp"
+#include "common/platform.hpp"
+#include "common/constants.hpp"
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <charconv>
+#include <optional>
+#include <string_view>
+#include <limits>
 
 namespace config {
 
@@ -12,6 +18,29 @@ bool CliParser::has_tui_flag(int argc, char** argv) {
     return false;
 }
 
+namespace {
+
+std::optional<long long> parse_integer(const char* text) {
+    if (text == nullptr || *text == '\0') {
+        return std::nullopt;
+    }
+
+    long long value = 0;
+    const char* end = text + std::strlen(text);
+    const auto result = std::from_chars(text, end, value);
+    if (result.ec != std::errc{} || result.ptr != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+bool is_valid_ipv4(const std::string& address) {
+    struct in_addr addr {};
+    return inet_pton(AF_INET, address.c_str(), &addr) == 1;
+}
+
+} // namespace
+
 Config CliParser::parse(int argc, char** argv) {
     Config cfg;
 
@@ -21,41 +50,15 @@ Config CliParser::parse(int argc, char** argv) {
     }
 
     int positional = 0;
+    std::string positional_values[5];
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
         if (arg[0] == '-' && arg[1] == '-' && arg[2] != '\0') {
             continue;
         }
 
-        switch (positional) {
-            case 0:
-                cfg.target_ip = arg;
-                break;
-            case 1:
-                cfg.target_port = static_cast<std::uint16_t>(std::stoi(arg));
-                break;
-            case 2:
-                cfg.worker_count = static_cast<std::uint32_t>(std::stoi(arg));
-                break;
-            case 3: {
-                int mode = std::stoi(arg);
-                switch (mode) {
-                    case 0: cfg.packet_mode = PacketMode::Mixed; break;
-                    case 1: cfg.packet_mode = PacketMode::Tcp; break;
-                    case 2: cfg.packet_mode = PacketMode::Udp; break;
-                    case 3: cfg.packet_mode = PacketMode::Icmp; break;
-                    case 4: cfg.packet_mode = PacketMode::Ack; break;
-                    case 5: cfg.packet_mode = PacketMode::Rst; break;
-                    case 6: cfg.packet_mode = PacketMode::SynAck; break;
-                    default: cfg.packet_mode = PacketMode::Mixed; break;
-                }
-                break;
-            }
-            case 4:
-                cfg.rate_limit = static_cast<std::uint32_t>(std::stoi(arg));
-                break;
-            default:
-                break;
+        if (positional < 5) {
+            positional_values[positional] = arg;
         }
         ++positional;
     }
@@ -63,6 +66,59 @@ Config CliParser::parse(int argc, char** argv) {
     if (positional < 2) {
         print_usage(argv[0]);
         std::exit(1);
+    }
+
+    cfg.target_ip = positional_values[0];
+    if (!is_valid_ipv4(cfg.target_ip)) {
+        std::cerr << "  Invalid target IP: " << cfg.target_ip << std::endl;
+        print_usage(argv[0]);
+        std::exit(1);
+    }
+
+    const auto port = parse_integer(positional_values[1].c_str());
+    if (!port || *port < 1 || *port > 65535) {
+        std::cerr << "  Invalid port: " << positional_values[1] << std::endl;
+        print_usage(argv[0]);
+        std::exit(1);
+    }
+    cfg.target_port = static_cast<std::uint16_t>(*port);
+
+    if (positional >= 3) {
+        const auto workers = parse_integer(positional_values[2].c_str());
+        if (!workers || *workers < 1 || *workers > common::MAX_THREADS) {
+            std::cerr << "  Invalid worker count: " << positional_values[2] << std::endl;
+            print_usage(argv[0]);
+            std::exit(1);
+        }
+        cfg.worker_count = static_cast<std::uint32_t>(*workers);
+    }
+
+    if (positional >= 4) {
+        const auto mode = parse_integer(positional_values[3].c_str());
+        if (!mode || *mode < 0 || *mode > 6) {
+            std::cerr << "  Invalid packet mode: " << positional_values[3] << std::endl;
+            print_usage(argv[0]);
+            std::exit(1);
+        }
+        switch (*mode) {
+            case 0: cfg.packet_mode = PacketMode::Mixed; break;
+            case 1: cfg.packet_mode = PacketMode::Tcp; break;
+            case 2: cfg.packet_mode = PacketMode::Udp; break;
+            case 3: cfg.packet_mode = PacketMode::Icmp; break;
+            case 4: cfg.packet_mode = PacketMode::Ack; break;
+            case 5: cfg.packet_mode = PacketMode::Rst; break;
+            case 6: cfg.packet_mode = PacketMode::SynAck; break;
+        }
+    }
+
+    if (positional >= 5) {
+        const auto rate = parse_integer(positional_values[4].c_str());
+        if (!rate || *rate < 0 || *rate > std::numeric_limits<std::uint32_t>::max()) {
+            std::cerr << "  Invalid rate limit: " << positional_values[4] << std::endl;
+            print_usage(argv[0]);
+            std::exit(1);
+        }
+        cfg.rate_limit = static_cast<std::uint32_t>(*rate);
     }
 
     for (int i = 1; i < argc; ++i) {
@@ -77,8 +133,6 @@ Config CliParser::parse(int argc, char** argv) {
             cfg.real_ip_interface = argv[++i];
         }
     }
-
-    if (cfg.worker_count > 10000) cfg.worker_count = 10000;
 
     return cfg;
 }

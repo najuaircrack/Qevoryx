@@ -19,8 +19,7 @@ bool IcmpStrategy::build(const PacketContext& ctx, common::PacketBuffer& output)
     std::uint32_t src_ip = ctx.rng.next();
     std::uint16_t id = ctx.rng.next32() & 0xFFFF;
     std::uint16_t seq = ctx.rng.range(0, 65535);
-    struct in_addr dst_addr;
-    inet_pton(AF_INET, ctx.config.target_ip.c_str(), &dst_addr);
+    const std::uint32_t dst_ip = ctx.destination_ip;
 
     int data_len = ctx.rng.range(32, 64);
     std::size_t payload_offset = protocol::IPv4_HEADER_SIZE + protocol::ICMP_HEADER_SIZE;
@@ -54,7 +53,7 @@ bool IcmpStrategy::build(const PacketContext& ctx, common::PacketBuffer& output)
     iph->protocol = 1; // ICMP
     iph->checksum = 0;
     iph->source = src_ip;
-    iph->destination = dst_addr.s_addr;
+    iph->destination = dst_ip;
 
     output.size = pkt_len;
     return true;

@@ -30,7 +30,14 @@ std::uint32_t FastRandom::next32() noexcept {
 }
 
 std::uint32_t FastRandom::range(std::uint32_t min, std::uint32_t max) noexcept {
-    return min + (next() % (max - min + 1));
+    if (min > max) {
+        return min;
+    }
+    const std::uint64_t span = static_cast<std::uint64_t>(max) - min + 1;
+    if (span == 0) {
+        return static_cast<std::uint32_t>(next());
+    }
+    return static_cast<std::uint32_t>(min + (next() % span));
 }
 
 bool FastRandom::coin_flip(std::uint8_t probability_pct) noexcept {
