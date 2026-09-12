@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -O3 -march=native -mtune=native -funroll-loops -flto -Wall -Wextra -pthread
+CXXFLAGS := -std=c++17 -O3 -Wall -Wextra -pthread
 INCLUDES := -Iinclude
 
 SOURCES := \
@@ -27,16 +27,16 @@ OBJECTS_STATIC := $(SOURCES:.cpp=.static.o)
 TARGET := qevoryx
 TARGET_STATIC := qevoryx-static
 
-# Detect OS
-ifeq ($(OS),Windows_NT)
+# Detect OS via uname (works in MSYS2, Git Bash, and native Linux)
+UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
+
+ifeq ($(UNAME_S),MINGW64_NT-*)
     TARGET := qevoryx.exe
     TARGET_STATIC := qevoryx-static.exe
-    CXXFLAGS += -lws2_32
-else
-    UNAME_S := $(shell uname -s)
-    ifeq ($(UNAME_S),Linux)
-        CXXFLAGS += -lpthread
-    endif
+    CXXFLAGS += -O3 -march=native -mtune=native -funroll-loops -flto -lws2_32
+endif
+ifeq ($(UNAME_S),Linux)
+    CXXFLAGS += -O3 -march=native -mtune=native -funroll-loops -flto
 endif
 
 .PHONY: all static clean
@@ -59,6 +59,3 @@ $(TARGET_STATIC): $(OBJECTS_STATIC)
 
 clean:
 	rm -f $(OBJECTS) $(OBJECTS_STATIC) $(TARGET) $(TARGET_STATIC)
-ifeq ($(OS),Windows_NT)
-	del /Q /F $(OBJECTS) $(OBJECTS_STATIC) $(TARGET) $(TARGET_STATIC) 2>nul
-endif
