@@ -128,7 +128,7 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
     auto* adapters = static_cast<IP_ADAPTER_ADDRESSES*>(std::malloc(buf_size));
     if (!adapters) return 0;
 
-    DWORD result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_UNICAST,
+    DWORD result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
                                         nullptr, adapters, &buf_size);
     if (result != NO_ERROR) {
         std::free(adapters);
@@ -137,10 +137,7 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
 
     std::uint32_t ip = 0;
     for (auto* adapter = adapters; adapter != nullptr; adapter = adapter->Next) {
-        // AdapterName is char*, FriendlyName is wchar_t*
-        std::string name(adapter->AdapterName ? adapter->AdapterName : "");
-
-        // Convert FriendlyName (wchar_t*) to std::string
+        // Convert FriendlyName (wchar_t*) to std::string for comparison
         std::string friendly;
         if (adapter->FriendlyName) {
             int len = WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, nullptr, 0, nullptr, nullptr);
@@ -150,7 +147,8 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
             }
         }
 
-        if (name == interface_name || friendly == interface_name) {
+        // Match by FriendlyName only (AdapterName is a GUID, not useful)
+        if (friendly == interface_name) {
             for (auto* ua = adapter->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
                 if (ua->Address.lpSockaddr->sa_family == AF_INET) {
                     auto* sa = reinterpret_cast<struct sockaddr_in*>(ua->Address.lpSockaddr);
@@ -193,29 +191,30 @@ int Application::run() {
     }
 #endif
 
-    initialize();
-    create_workers();
-    start_monitor();
-    wait_for_shutdown();
-    shutdown();
+    bool initialized = initialize();
+    if (initialized) {
+        create_workers();
+        start_monitor();
+        wait_for_shutdown();
+        shutdown();
+    }
 
 #if QEVORYX_PLATFORM_WINDOWS
     WSACleanup();
 #endif
 
-    return 0;
+    return initialized ? 0 : 1;
 }
 
-void Application::initialize() {
+bool Application::initialize() {
     if (config_.use_spoof_ips) {
         generate_spoof_ips();
     } else {
         std::uint32_t real_ip = get_real_ip(config_.real_ip_interface);
         if (real_ip == 0) {
             std::cerr << "  Could not get IP for interface: " << config_.real_ip_interface << std::endl;
-            std::cerr << "  Falling back to spoof mode" << std::endl;
-            config_.use_spoof_ips = true;
-            generate_spoof_ips();
+            std::cerr << "  Use --spoof to explicitly enable spoofed source mode" << std::endl;
+            return false;
         } else {
             char ip_str[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &real_ip, ip_str, INET_ADDRSTRLEN);
@@ -239,6 +238,8 @@ void Application::initialize() {
 #else
     // Windows: set send buffer size via setsockopt (done per-socket below)
 #endif
+
+    return true;
 }
 
 void Application::create_workers() {

@@ -123,7 +123,7 @@ config::Config Tui::run() {
     print_divider();
     std::cout << "  [4/6] IP MODE\n";
     print_divider();
-    cfg.use_spoof_ips = input_bool("  Use spoofed source IPs?", true);
+    cfg.use_spoof_ips = !input_bool("  Use real source IP?", true);
 
     if (!cfg.use_spoof_ips) {
 #if QEVORYX_PLATFORM_LINUX

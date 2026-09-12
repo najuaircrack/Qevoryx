@@ -6,7 +6,7 @@ High-performance raw-socket packet generator with modular architecture, IP spoof
 
 - **7 packet modes** — Mixed, TCP SYN, UDP, ICMP Echo, TCP ACK, TCP RST, TCP SYN-ACK
 - **TUI mode** — interactive terminal configuration when `--tui` is passed
-- **IP spoofing** — generates spoofed source IPs from major cloud provider CIDR ranges, or use your real IP with `--real-ip`
+- **Source selection** — real interface IP by default, spoofed source IPs only with explicit `--spoof`
 - **Modular architecture** — strategy pattern for packet types, pluggable transports, pluggable monitors
 - **Performance-optimized** — xoshiro256** PRNG, CPU affinity pinning, stack-allocated cache-line aligned packets, no-memset hot paths, thread-local PPS counters, yield-based rate limiting
 - **Real-time monitoring** — live PPS, total packets, max PPS tracking
@@ -51,7 +51,8 @@ sudo ./qevoryx --tui
 | Flag | Description |
 |------|-------------|
 | `--tui` | Launch interactive terminal UI |
-| `--real-ip [interface]` | Use real IP instead of spoofed (default: eth0) |
+| `--real-ip [interface]` | Use the real interface IP (default) |
+| `--spoof` | Explicitly enable spoofed source IPs |
 | `--interface <name>` | Specify network interface for real IP |
 
 ### Examples
@@ -68,6 +69,7 @@ sudo ./qevoryx 192.168.1.100 53 5000 2 1000000
 
 # ICMP with real IP from wlan0
 sudo ./qevoryx 192.168.1.100 25565 5000 3 0 --real-ip wlan0
+sudo ./qevoryx 192.168.1.100 25565 5000 1 0 --spoof
 
 # Interactive TUI
 sudo ./qevoryx --tui
@@ -84,7 +86,7 @@ The interactive TUI guides you through 6 steps:
 1. **Target** — set IP and port
 2. **Attack Mode** — pick from 7 packet strategies
 3. **Workers** — set thread count (max 10000)
-4. **IP Mode** — spoofed or real (lists available interfaces)
+4. **IP Mode** — real by default, spoofed only if explicitly selected
 5. **Payload** — min/max bytes for UDP modes
 6. **Rate Limit** — per-thread PPS cap
 

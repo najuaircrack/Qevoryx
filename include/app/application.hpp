@@ -10,7 +10,7 @@ public:
     int run();
 
 private:
-    void initialize();
+    bool initialize();
     void create_workers();
     void start_monitor();
     void wait_for_shutdown();
