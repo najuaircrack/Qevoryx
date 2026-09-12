@@ -2,6 +2,7 @@ CXX := g++
 CXXFLAGS := -std=c++17 -O3 -march=x86-64 -mtune=generic -funroll-loops -flto -Wall -Wextra -pthread -MMD -MP
 INCLUDES := -Iinclude
 LDLIBS :=
+LDLIBS_STATIC :=
 
 SOURCES := \
     src/main.cpp \
@@ -50,19 +51,25 @@ TARGET_STATIC := qevoryx-static
 # Detect OS
 UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
 
+LDLIBS_STATIC := $(LDLIBS)
+
 ifneq (,$(findstring MINGW,$(UNAME_S)))
     TARGET := qevoryx.exe
     TARGET_STATIC := qevoryx-static.exe
     LDLIBS += -lws2_32 -liphlpapi -lpanelw -lncursesw
+    LDLIBS_STATIC += -lws2_32 -liphlpapi -l:libpanelw.a -l:libncursesw.a
 endif
 ifneq (,$(findstring MSYS,$(UNAME_S)))
     TARGET := qevoryx.exe
     TARGET_STATIC := qevoryx-static.exe
     LDLIBS += -lws2_32 -liphlpapi -lpanelw -lncursesw
+    LDLIBS_STATIC += -lws2_32 -liphlpapi -l:libpanelw.a -l:libncursesw.a
 endif
 ifeq ($(UNAME_S),Linux)
-    NCURSES_LIBS := $(shell pkg-config --static --libs panelw ncursesw 2>/dev/null || printf '%s' '-lpanelw -lncursesw -ltinfo')
+    NCURSES_LIBS := $(shell pkg-config --libs panelw ncursesw 2>/dev/null || printf '%s' '-lpanelw -lncursesw -ltinfo')
+    NCURSES_STATIC_LIBS := $(shell pkg-config --static --libs panelw ncursesw 2>/dev/null || printf '%s' '-lpanelw -lncursesw -ltinfo')
     LDLIBS += $(NCURSES_LIBS)
+    LDLIBS_STATIC += $(NCURSES_STATIC_LIBS)
 endif
 
 .PHONY: all static clean
@@ -75,7 +82,7 @@ $(TARGET): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(OBJECTS) -o $@ $(LDLIBS)
 
 $(TARGET_STATIC): $(OBJECTS_STATIC)
-	$(CXX) $(CXXFLAGS) -static $(OBJECTS_STATIC) -o $@ $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -static $(OBJECTS_STATIC) -o $@ $(LDLIBS_STATIC)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@

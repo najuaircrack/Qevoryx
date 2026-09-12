@@ -69,6 +69,10 @@ jobs:
         shell: msys2 {0}
         run: make static
 
+      - name: Smoke test
+        shell: msys2 {0}
+        run: ./qevoryx-static.exe --version
+
       - name: Verify
         shell: msys2 {0}
         run: file qevoryx-static.exe
