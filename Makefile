@@ -18,7 +18,7 @@ SOURCES := \
     src/monitor/monitor_factory.cpp
 
 OBJECTS := $(SOURCES:.cpp=.o)
-TARGET := packet-tool
+TARGET := qevoryx
 
 .PHONY: all clean
 
