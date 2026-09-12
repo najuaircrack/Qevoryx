@@ -5,6 +5,13 @@
 
 namespace config {
 
+bool CliParser::has_tui_flag(int argc, char** argv) {
+    for (int i = 1; i < argc; i++) {
+        if (std::strcmp(argv[i], "--tui") == 0) return true;
+    }
+    return false;
+}
+
 Config CliParser::parse(int argc, char** argv) {
     Config cfg;
 
@@ -64,13 +71,15 @@ void CliParser::print_usage(const char* program_name) {
     std::cout << "    6 - TCP SYN-ACK\n";
     std::cout << "\n";
     std::cout << "  Flags:\n";
-    std::cout << "    --real-ip [interface]    Use real IP instead of spoofed (default: eth0)\n";
-    std::cout << "    --interface <name>       Specify network interface for real IP\n";
+    std::cout << "    --tui                     Launch interactive terminal UI\n";
+    std::cout << "    --real-ip [interface]     Use real IP instead of spoofed (default: eth0)\n";
+    std::cout << "    --interface <name>        Specify network interface for real IP\n";
     std::cout << "\n";
     std::cout << "  Examples:\n";
     std::cout << "    sudo " << program_name << " 192.168.1.100 25565 5000 0 0\n";
     std::cout << "    sudo " << program_name << " 192.168.1.100 80 10000 1 0 --real-ip\n";
     std::cout << "    sudo " << program_name << " 192.168.1.100 53 5000 3 0 --interface wlan0\n";
+    std::cout << "    sudo " << program_name << " --tui\n";
     std::cout << "\n";
 }
 

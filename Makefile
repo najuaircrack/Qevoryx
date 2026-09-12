@@ -19,20 +19,31 @@ SOURCES := \
     src/transport/file_transport.cpp \
     src/transport/test_transport.cpp \
     src/monitor/console_monitor.cpp \
-    src/monitor/monitor_factory.cpp
+    src/monitor/monitor_factory.cpp \
+    src/tui/tui.cpp
 
 OBJECTS := $(SOURCES:.cpp=.o)
+OBJECTS_STATIC := $(SOURCES:.cpp=.static.o)
 TARGET := qevoryx
+TARGET_STATIC := qevoryx-static
 
-.PHONY: all clean
+.PHONY: all static clean
 
 all: $(TARGET)
+
+static: $(TARGET_STATIC)
 
 $(TARGET): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(OBJECTS) -o $@
 
+$(TARGET_STATIC): $(OBJECTS_STATIC)
+	$(CXX) $(CXXFLAGS) -static $(OBJECTS_STATIC) -o $@
+
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+%.static.o: %.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -DSNAPSHOT_BUILD -c $< -o $@
+
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -f $(OBJECTS) $(OBJECTS_STATIC) $(TARGET) $(TARGET_STATIC)
