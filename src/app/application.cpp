@@ -137,13 +137,18 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
 
     std::uint32_t ip = 0;
     for (auto* adapter = adapters; adapter != nullptr; adapter = adapter->Next) {
-        // Match by adapter name (e.g. "Wi-Fi", "Ethernet") or friendly name
-        std::wstring wname(adapter->AdapterName);
-        std::string name(wname.begin(), wname.end());
+        // AdapterName is char*, FriendlyName is wchar_t*
+        std::string name(adapter->AdapterName ? adapter->AdapterName : "");
 
-        // Also check friendly name
-        std::wstring wfriendly(adapter->FriendlyName);
-        std::string friendly(wfriendly.begin(), wfriendly.end());
+        // Convert FriendlyName (wchar_t*) to std::string
+        std::string friendly;
+        if (adapter->FriendlyName) {
+            int len = WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, nullptr, 0, nullptr, nullptr);
+            if (len > 0) {
+                friendly.resize(len - 1);
+                WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, friendly.data(), len, nullptr, nullptr);
+            }
+        }
 
         if (name == interface_name || friendly == interface_name) {
             for (auto* ua = adapter->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
