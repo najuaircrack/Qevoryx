@@ -73,6 +73,15 @@ jobs:
         shell: msys2 {0}
         run: ./qevoryx-static.exe --version
 
+      - name: Verify static linkage
+        shell: msys2 {0}
+        run: |
+          if ldd qevoryx-static.exe | grep -q mingw64; then
+            echo "Static binary still depends on MinGW runtime libraries"
+            ldd qevoryx-static.exe
+            exit 1
+          fi
+
       - name: Verify
         shell: msys2 {0}
         run: file qevoryx-static.exe

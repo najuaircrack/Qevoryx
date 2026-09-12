@@ -76,6 +76,11 @@ jobs:
         run: |
           file qevoryx.exe
           file qevoryx-static.exe
+          if ldd qevoryx-static.exe | grep -q mingw64; then
+            echo "Static binary still depends on MinGW runtime libraries"
+            ldd qevoryx-static.exe
+            exit 1
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
