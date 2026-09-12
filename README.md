@@ -128,7 +128,6 @@ Qevoryx/
 | CPU affinity pinning | Prevents L1/L2 cache thrashing |
 | Thread-local PPS counters | Eliminates atomic cache-line bouncing |
 | Skip IP checksum (kernel computes) | Saves one full buffer walk per packet |
-| Power-of-2 spoof pool + bitmask | Branchless IP selection, no modulo |
 | No memset in hot loop | Explicit field writes only |
 | Stack-allocated aligned packets | No heap allocator in hot path |
 | yield() rate limiting | No scheduler penalty |

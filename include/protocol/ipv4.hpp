@@ -30,6 +30,7 @@ PACKED_STRUCT IPv4Header {
 
 constexpr std::uint8_t IPv4_VERSION_IHL = 0x45;
 constexpr std::uint16_t IPv4_HEADER_SIZE = sizeof(IPv4Header);
+static_assert(sizeof(IPv4Header) == 20, "IPv4 header must be 20 bytes");
 constexpr std::uint8_t IPPROTO_VALUE_TCP = 6;
 constexpr std::uint8_t IPPROTO_VALUE_UDP = 17;
 

@@ -143,7 +143,7 @@ void CliParser::print_usage(const char* program_name) {
     std::cout << "  Usage: " << program_name << " <target_ip> <port> [threads] [mode] [rate] [flags]\n";
     std::cout << "\n";
     std::cout << "  Modes:\n";
-    std::cout << "    0 - Mixed (TCP+UDP)\n";
+    std::cout << "    0 - Mixed (TCP+UDP+ICMP)\n";
     std::cout << "    1 - TCP SYN\n";
     std::cout << "    2 - UDP\n";
     std::cout << "    3 - ICMP Echo\n";

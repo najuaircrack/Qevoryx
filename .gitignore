@@ -2,10 +2,12 @@
 qevoryx
 qevoryx.exe
 qevoryx-static
+qevoryx-static.exe
 stress
 stress.exe
 *.o
 *.obj
+*.d
 
 # Generated files
 SPEC.txt

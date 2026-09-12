@@ -35,7 +35,9 @@ namespace {
 
 std::atomic<bool> g_running{true};
 std::atomic<std::uint64_t> g_total_packets{0};
+std::atomic<std::uint64_t> g_total_errors{0};
 std::atomic<std::uint32_t> g_threads_ready{0};
+std::atomic<std::uint32_t> g_threads_failed{0};
 
 [[maybe_unused]] void run_cmd(const char* cmd) {
     int ret = std::system(cmd);
@@ -125,11 +127,28 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
 // Windows: real IP detection via GetAdaptersAddresses
 std::uint32_t get_real_ip(const std::string& interface_name) {
     ULONG buf_size = 15000;
-    auto* adapters = static_cast<IP_ADAPTER_ADDRESSES*>(std::malloc(buf_size));
-    if (!adapters) return 0;
+    IP_ADAPTER_ADDRESSES* adapters = nullptr;
+    DWORD result = ERROR_BUFFER_OVERFLOW;
 
-    DWORD result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
-                                        nullptr, adapters, &buf_size);
+    for (int attempt = 0; attempt < 4 && result == ERROR_BUFFER_OVERFLOW; ++attempt) {
+        adapters = static_cast<IP_ADAPTER_ADDRESSES*>(std::malloc(buf_size));
+        if (!adapters) {
+            return 0;
+        }
+
+        result = GetAdaptersAddresses(AF_INET,
+                                      GAA_FLAG_SKIP_ANYCAST |
+                                      GAA_FLAG_SKIP_MULTICAST |
+                                      GAA_FLAG_SKIP_DNS_SERVER,
+                                      nullptr,
+                                      adapters,
+                                      &buf_size);
+        if (result == ERROR_BUFFER_OVERFLOW) {
+            std::free(adapters);
+            adapters = nullptr;
+        }
+    }
+
     if (result != NO_ERROR) {
         std::free(adapters);
         return 0;
@@ -191,9 +210,22 @@ int Application::run() {
     }
 #endif
 
-    bool initialized = initialize();
-    if (initialized) {
-        create_workers();
+    if (!initialize()) {
+#if QEVORYX_PLATFORM_WINDOWS
+        WSACleanup();
+#endif
+        return 1;
+    }
+
+    if (!create_workers()) {
+        shutdown();
+#if QEVORYX_PLATFORM_WINDOWS
+        WSACleanup();
+#endif
+        return 1;
+    }
+
+    {
         start_monitor();
         wait_for_shutdown();
         shutdown();
@@ -203,7 +235,7 @@ int Application::run() {
     WSACleanup();
 #endif
 
-    return initialized ? 0 : 1;
+    return 0;
 }
 
 bool Application::initialize() {
@@ -242,7 +274,7 @@ bool Application::initialize() {
     return true;
 }
 
-void Application::create_workers() {
+bool Application::create_workers() {
     std::cout << "\n  Starting " << config_.worker_count << " workers..." << std::endl;
 
     std::vector<std::shared_ptr<packet::PacketStrategy>> strategies;
@@ -268,11 +300,12 @@ void Application::create_workers() {
         struct in_addr addr {};
         if (inet_pton(AF_INET, config_.target_ip.c_str(), &addr) != 1) {
             std::cerr << "  Invalid target IP: " << config_.target_ip << std::endl;
-            return;
+            return false;
         }
         destination_ip = addr.s_addr;
     }
 
+    try {
     for (std::uint32_t i = 0; i < config_.worker_count; i++) {
         std::shared_ptr<packet::PacketStrategy> strat;
         if (config_.packet_mode == config::PacketMode::Mixed) {
@@ -302,6 +335,7 @@ void Application::create_workers() {
                 if (i == 0) std::cerr << "  Worker 0: socket() failed: " << strerror(errno) << std::endl;
 #endif
                 g_threads_ready++;
+                g_threads_failed++;
                 return;
             }
 
@@ -313,6 +347,7 @@ void Application::create_workers() {
                 }
                 QEVORYX_CLOSESOCK(sock);
                 g_threads_ready++;
+                g_threads_failed++;
                 return;
             }
 
@@ -333,6 +368,10 @@ void Application::create_workers() {
 
             while (g_running) {
                 bool sent = strat->build(ctx, buffer);
+                if (!sent) {
+                    g_total_errors++;
+                    continue;
+                }
 
                 // If using real IP, overwrite source IP in the built packet
                 if (sent && !config_.use_spoof_ips && real_ip != 0) {
@@ -351,11 +390,12 @@ void Application::create_workers() {
                 if (sent) {
                     int ret = sendto(sock, reinterpret_cast<const char*>(buffer.ptr()), buffer.size, 0,
                                    reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin));
-                    if (ret > 0) {
-                        g_total_packets++;
-                        local_packets++;
-                        window_packets++;
-                    } else if (i == 0) {
+                        if (ret > 0) {
+                            g_total_packets++;
+                            local_packets++;
+                            window_packets++;
+                        } else if (i == 0) {
+                            g_total_errors++;
 #if QEVORYX_PLATFORM_WINDOWS
                         int err = WSAGetLastError();
                         if (local_packets == 0) std::cerr << "  Worker 0: sendto() failed (WSA error " << err << ")" << std::endl;
@@ -382,14 +422,25 @@ void Application::create_workers() {
         if (i % 100 == 0) { std::cout << "."; std::cout.flush(); }
         std::this_thread::sleep_for(std::chrono::microseconds(5));
     }
+    } catch (const std::system_error& error) {
+        std::cerr << "  Failed to create workers: " << error.what() << std::endl;
+        g_running = false;
+        return false;
+    }
 
     std::cout << " READY!\n" << std::endl;
 
     while (g_threads_ready < config_.worker_count)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
+    if (g_threads_failed.load() >= config_.worker_count) {
+        std::cerr << "  All workers failed to start\n" << std::endl;
+        return false;
+    }
+
     std::cout << "  All workers ready - generating packets!\n" << std::endl;
 
+    return true;
 }
 
 void Application::start_monitor() {
@@ -400,7 +451,7 @@ void Application::start_monitor() {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         monitor::MonitorSnapshot snap{
             g_total_packets.load(),
-            0
+            g_total_errors.load()
         };
         mon->update(snap);
     }

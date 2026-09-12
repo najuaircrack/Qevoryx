@@ -1,6 +1,7 @@
 #include "transport/file_transport.hpp"
 #include "common/platform.hpp"
 #include <fcntl.h>
+#include <cerrno>
 
 #if QEVORYX_PLATFORM_WINDOWS
 #include <io.h>
@@ -18,7 +19,13 @@
 namespace transport {
 
 FileTransport::FileTransport(const std::string& path)
-    : fd_(QEVORYX_OPEN(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644)) {}
+    : fd_(QEVORYX_OPEN(path.c_str(),
+#if QEVORYX_PLATFORM_WINDOWS
+                       O_WRONLY | O_CREAT | O_TRUNC | O_BINARY,
+#else
+                       O_WRONLY | O_CREAT | O_TRUNC,
+#endif
+                       0644)) {}
 
 FileTransport::~FileTransport() {
     close();
@@ -26,8 +33,27 @@ FileTransport::~FileTransport() {
 
 bool FileTransport::transmit(const common::PacketBuffer& packet) {
     if (fd_ < 0) return false;
-    ssize_t written = QEVORYX_WRITE(fd_, packet.ptr(), packet.size);
-    return written == static_cast<ssize_t>(packet.size);
+
+    std::size_t total_written = 0;
+    while (total_written < packet.size) {
+        const ssize_t written = QEVORYX_WRITE(fd_,
+                                                packet.ptr() + total_written,
+                                                packet.size - total_written);
+        if (written < 0) {
+#if !QEVORYX_PLATFORM_WINDOWS
+            if (errno == EINTR) {
+                continue;
+            }
+#endif
+            return false;
+        }
+        if (written == 0) {
+            return false;
+        }
+        total_written += static_cast<std::size_t>(written);
+    }
+
+    return true;
 }
 
 void FileTransport::close() noexcept {

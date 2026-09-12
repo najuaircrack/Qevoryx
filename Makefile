@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -O3 -march=native -mtune=native -funroll-loops -flto -Wall -Wextra -pthread
+CXXFLAGS := -std=c++17 -O3 -march=native -mtune=native -funroll-loops -flto -Wall -Wextra -pthread -MMD -MP
 INCLUDES := -Iinclude
 LDLIBS :=
 
@@ -61,6 +61,8 @@ $(TARGET_STATIC): $(OBJECTS_STATIC)
 
 %.static.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -DSNAPSHOT_BUILD -c $< -o $@
+
+-include $(OBJECTS:.o=.d) $(OBJECTS_STATIC:.o=.d)
 
 clean:
 	rm -f $(OBJECTS) $(OBJECTS_STATIC) $(TARGET) $(TARGET_STATIC)

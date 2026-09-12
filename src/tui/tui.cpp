@@ -1,5 +1,6 @@
 #include "tui/tui.hpp"
 #include "common/platform.hpp"
+#include "common/constants.hpp"
 #include <iostream>
 #include <string>
 #include <cstdlib>
@@ -83,7 +84,16 @@ config::Config Tui::run() {
     std::cout << "  [1/6] TARGET\n";
     print_divider();
     cfg.target_ip = input_string("  Target IP", "127.0.0.1");
-    cfg.target_port = input_int("  Target port", 25565);
+    struct in_addr target_addr {};
+    if (inet_pton(AF_INET, cfg.target_ip.c_str(), &target_addr) != 1) {
+        std::cerr << "  Invalid target IP, using 127.0.0.1" << std::endl;
+        cfg.target_ip = "127.0.0.1";
+    }
+
+    cfg.target_port = static_cast<std::uint16_t>(input_int("  Target port", 25565));
+    if (cfg.target_port == 0) {
+        cfg.target_port = 25565;
+    }
     std::cout << "\n";
 
     // ── Step 2: Attack Mode ──
@@ -116,7 +126,8 @@ config::Config Tui::run() {
     std::cout << "  [3/6] WORKERS\n";
     print_divider();
     cfg.worker_count = input_int("  Number of worker threads", 1000);
-    if (cfg.worker_count > 10000) cfg.worker_count = 10000;
+    if (cfg.worker_count < 1) cfg.worker_count = 1;
+    if (cfg.worker_count > common::MAX_THREADS) cfg.worker_count = common::MAX_THREADS;
     std::cout << "\n";
 
     // ── Step 4: IP Mode ──
@@ -162,6 +173,9 @@ config::Config Tui::run() {
         cfg.packet_mode == config::PacketMode::Mixed) {
         cfg.payload_min = input_int("  Min payload bytes", 512);
         cfg.payload_max = input_int("  Max payload bytes", 1400);
+        if (cfg.payload_min > cfg.payload_max) {
+            std::swap(cfg.payload_min, cfg.payload_max);
+        }
     } else {
         std::cout << "  Skipped (not applicable for this mode)\n";
     }
@@ -172,6 +186,9 @@ config::Config Tui::run() {
     std::cout << "  [6/6] RATE LIMIT\n";
     print_divider();
     cfg.rate_limit = input_int("  PPS limit per thread (0 = unlimited)", 0);
+    if (cfg.rate_limit < 0) {
+        cfg.rate_limit = 0;
+    }
     std::cout << "\n";
 
     return cfg;
@@ -206,7 +223,10 @@ bool Tui::confirm_launch(const config::Config& cfg) {
     std::cout << "  ╚════════════════════════════════════════════════╝\n";
     std::cout << "\n";
 
-    return input_bool("  Launch with these settings?", true);
+    std::cout << "  Launch with these settings? [yes/no]: ";
+    std::string confirmation;
+    std::getline(std::cin, confirmation);
+    return confirmation == "y" || confirmation == "Y" || confirmation == "yes" || confirmation == "Yes";
 }
 
 } // namespace tui

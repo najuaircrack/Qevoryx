@@ -10,9 +10,14 @@ namespace app {
 
 bool pin_current_thread(std::uint32_t cpu_index) noexcept {
 #if QEVORYX_PLATFORM_LINUX
+    const unsigned int cpu_count = std::thread::hardware_concurrency();
+    if (cpu_count == 0) {
+        return false;
+    }
+
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(cpu_index % std::thread::hardware_concurrency(), &cpuset);
+    CPU_SET(cpu_index % cpu_count, &cpuset);
     return pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) == 0;
 #else
     // Windows: SetThreadAffinityMask would go here

@@ -34,6 +34,7 @@ constexpr std::uint8_t TCP_FLAG_ACK = 0x10;
 constexpr std::uint8_t TCP_FLAG_RST = 0x04;
 constexpr std::uint8_t TCP_FLAG_SYN_ACK = 0x12;
 constexpr std::uint16_t TCP_HEADER_SIZE = sizeof(TcpHeader);
+static_assert(sizeof(TcpHeader) == 20, "TCP header must be 20 bytes");
 constexpr std::uint8_t TCP_OPTION_MSS_KIND = 2;
 constexpr std::uint8_t TCP_OPTION_MSS_LEN = 4;
 constexpr std::uint16_t TCP_OPTION_MSS_VALUE = 1460;

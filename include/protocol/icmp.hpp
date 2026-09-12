@@ -27,5 +27,6 @@ constexpr std::uint8_t ICMP_TYPE_ECHO_REQUEST = 8;
 constexpr std::uint8_t ICMP_TYPE_ECHO_REPLY = 0;
 constexpr std::uint8_t ICMP_CODE_ECHO = 0;
 constexpr std::uint16_t ICMP_HEADER_SIZE = sizeof(IcmpHeader);
+static_assert(sizeof(IcmpHeader) == 8, "ICMP header must be 8 bytes");
 
 } // namespace protocol

@@ -23,5 +23,6 @@ PACKED_STRUCT UdpHeader {
 #endif
 
 constexpr std::uint16_t UDP_HEADER_SIZE = sizeof(UdpHeader);
+static_assert(sizeof(UdpHeader) == 8, "UDP header must be 8 bytes");
 
 } // namespace protocol
