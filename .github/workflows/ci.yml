@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [g++]
+        build_type: [dynamic, static]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ make
+
+      - name: Build (dynamic)
+        if: matrix.build_type == 'dynamic'
+        run: make clean && make
+
+      - name: Build (static)
+        if: matrix.build_type == 'static'
+        run: make clean && make static
+
+      - name: Verify binary
+        run: |
+          if [ "${{ matrix.build_type }}" = "static" ]; then
+            file qevoryx-static
+          else
+            file qevoryx
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qevoryx-${{ matrix.build_type }}-linux-amd64
+          path: |
+            qevoryx
+            qevoryx-static
+          if-no-files-found: warn
