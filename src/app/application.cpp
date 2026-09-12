@@ -28,6 +28,7 @@
 #include <csignal>
 #include <cstring>
 #include <cstdlib>
+#include <cerrno>
 
 namespace {
 
@@ -121,10 +122,43 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
     return result;
 }
 #else
-// Windows: placeholder — real IP detection requires GetAdaptersAddresses
+// Windows: real IP detection via GetAdaptersAddresses
 std::uint32_t get_real_ip(const std::string& interface_name) {
-    (void)interface_name;
-    return 0;
+    ULONG buf_size = 15000;
+    auto* adapters = static_cast<IP_ADAPTER_ADDRESSES*>(std::malloc(buf_size));
+    if (!adapters) return 0;
+
+    DWORD result = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_UNICAST,
+                                        nullptr, adapters, &buf_size);
+    if (result != NO_ERROR) {
+        std::free(adapters);
+        return 0;
+    }
+
+    std::uint32_t ip = 0;
+    for (auto* adapter = adapters; adapter != nullptr; adapter = adapter->Next) {
+        // Match by adapter name (e.g. "Wi-Fi", "Ethernet") or friendly name
+        std::wstring wname(adapter->AdapterName);
+        std::string name(wname.begin(), wname.end());
+
+        // Also check friendly name
+        std::wstring wfriendly(adapter->FriendlyName);
+        std::string friendly(wfriendly.begin(), wfriendly.end());
+
+        if (name == interface_name || friendly == interface_name) {
+            for (auto* ua = adapter->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
+                if (ua->Address.lpSockaddr->sa_family == AF_INET) {
+                    auto* sa = reinterpret_cast<struct sockaddr_in*>(ua->Address.lpSockaddr);
+                    ip = sa->sin_addr.s_addr;
+                    break;
+                }
+            }
+            if (ip != 0) break;
+        }
+    }
+
+    std::free(adapters);
+    return ip;
 }
 #endif
 
@@ -241,7 +275,16 @@ void Application::create_workers() {
 #else
             int sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 #endif
-            if (sock < 0) { g_threads_ready++; return; }
+            if (sock < 0) {
+#if QEVORYX_PLATFORM_WINDOWS
+                int err = WSAGetLastError();
+                if (i == 0) std::cerr << "  Worker 0: socket() failed (WSA error " << err << ")" << std::endl;
+#else
+                if (i == 0) std::cerr << "  Worker 0: socket() failed: " << strerror(errno) << std::endl;
+#endif
+                g_threads_ready++;
+                return;
+            }
 
             int one = 1;
             setsockopt(sock, IPPROTO_IP, IP_HDRINCL, reinterpret_cast<const char*>(&one), sizeof(one));
@@ -278,10 +321,18 @@ void Application::create_workers() {
                 }
 
                 if (sent) {
-                    if (sendto(sock, reinterpret_cast<const char*>(buffer.ptr()), buffer.size, 0,
-                               reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin)) > 0) {
+                    int ret = sendto(sock, reinterpret_cast<const char*>(buffer.ptr()), buffer.size, 0,
+                                     reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin));
+                    if (ret > 0) {
                         g_total_packets++;
                         local_pps++;
+                    } else if (i == 0) {
+#if QEVORYX_PLATFORM_WINDOWS
+                        int err = WSAGetLastError();
+                        if (local_pps == 0) std::cerr << "  Worker 0: sendto() failed (WSA error " << err << ")" << std::endl;
+#else
+                        if (local_pps == 0) std::cerr << "  Worker 0: sendto() failed: " << strerror(errno) << std::endl;
+#endif
                     }
                 }
 

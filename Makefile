@@ -34,12 +34,12 @@ UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
 ifneq (,$(findstring MINGW,$(UNAME_S)))
     TARGET := qevoryx.exe
     TARGET_STATIC := qevoryx-static.exe
-    LDLIBS += -lws2_32
+    LDLIBS += -lws2_32 -liphlpapi
 endif
 ifneq (,$(findstring MSYS,$(UNAME_S)))
     TARGET := qevoryx.exe
     TARGET_STATIC := qevoryx-static.exe
-    LDLIBS += -lws2_32
+    LDLIBS += -lws2_32 -liphlpapi
 endif
 ifeq ($(UNAME_S),Linux)
 endif

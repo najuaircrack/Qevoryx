@@ -16,10 +16,12 @@
     #include <windows.h>
     #include <winsock2.h>
     #include <ws2tcpip.h>
+    #include <iphlpapi.h>
     #include <io.h>
     #include <process.h>
     #ifdef _MSC_VER
         #pragma comment(lib, "Ws2_32.lib")
+        #pragma comment(lib, "Iphlpapi.lib")
     #endif
 
     // Windows doesn't have close() for sockets — use closesocket()
