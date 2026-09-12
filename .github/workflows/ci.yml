@@ -50,14 +50,14 @@ jobs:
 
       - name: Build
         shell: msys2 {0}
-        run: make clean && make
+        run: make clean && make static
 
       - name: Verify
         shell: msys2 {0}
-        run: file qevoryx.exe
+        run: file qevoryx-static.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: qevoryx-windows-amd64
-          path: qevoryx.exe
+          path: qevoryx-static.exe

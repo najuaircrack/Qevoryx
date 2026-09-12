@@ -63,18 +63,22 @@ jobs:
 
       - name: Build
         shell: msys2 {0}
-        run: make clean && make
+        run: make clean && make static
+
+      - name: Verify
+        shell: msys2 {0}
+        run: file qevoryx-static.exe
 
       - name: Generate checksums
         shell: msys2 {0}
-        run: sha256sum qevoryx.exe > qevoryx-windows-amd64.exe.sha256
+        run: sha256sum qevoryx-static.exe > qevoryx-windows-amd64.exe.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-amd64
           path: |
-            qevoryx.exe
+            qevoryx-static.exe
             qevoryx-windows-amd64.exe.sha256
 
   release:
@@ -96,7 +100,7 @@ jobs:
           cp artifacts/linux-amd64/qevoryx-static release/qevoryx-linux-amd64-static
           cp artifacts/linux-amd64/qevoryx-linux-amd64.sha256 release/
           cp artifacts/linux-amd64/qevoryx-linux-amd64-static.sha256 release/
-          cp artifacts/windows-amd64/qevoryx.exe release/qevoryx-windows-amd64.exe
+          cp artifacts/windows-amd64/qevoryx-static.exe release/qevoryx-windows-amd64.exe
           cp artifacts/windows-amd64/qevoryx-windows-amd64.exe.sha256 release/
           chmod +x release/qevoryx-linux-amd64 release/qevoryx-linux-amd64-static
 
