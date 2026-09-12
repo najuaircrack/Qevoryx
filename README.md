@@ -1,25 +1,29 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Qevoryx banner" width="880">
+  <img src="/assets/banner.png" alt="Qevoryx banner" width="880">
 </p>
 
 # Qevoryx
 
-Qevoryx is a modular packet generator for people who need to test network behaviour in a controlled environment. It keeps configuration clear, gives you useful feedback while it runs, and shuts down cleanly when you ask it to stop.
+Qevoryx is a packet generator for careful network testing in places where you have permission to work. It opens as a friendly terminal control panel, keeps your settings between runs, and gives you clear feedback while it runs.
+
+The command line is still there when you need it, but the panel is now the main way to use Qevoryx.
 
 ## What you get
 
-* Seven traffic profiles, including mixed TCP, UDP, and ICMP generation
-* An interactive terminal setup for people who prefer guided configuration
-* Clear source selection, with your real interface address used by default
-* A modular design that keeps packet building, transport, and monitoring separate
-* Live packet and error counters so you can see what the tool is doing
-* Predictable shutdown that waits for workers to finish before the process exits
+* A keyboard driven control panel with configuration on one side and actions on the other
+* A compact version of the Qevoryx logo inside the panel
+* Settings that are remembered in a simple file on your computer
+* Safe first run values: one worker, a rate limit, your real interface address, and a local target
+* Seven traffic profiles for mixed TCP, UDP, and ICMP testing
+* A typed confirmation before live traffic starts
+* Live packet and error counters
+* Clean shutdown that waits for workers to finish
 
 ## Requirements
 
-Qevoryx is primarily built for Linux because raw sockets are simplest there. You will need root privileges, a C++17 compiler, and pthread support.
+Qevoryx is primarily built for Linux because raw sockets are simplest there. You need root privileges, a C++17 compiler, and pthread support.
 
-Windows builds are available, but raw socket support depends on your system setup. If you are on Windows and the tool cannot open a raw socket, run it from an elevated shell and confirm that your platform allows the socket type Qevoryx requests.
+Windows builds are available, but raw socket support depends on your system setup. If you use Windows, run Qevoryx from an elevated shell and confirm that your platform allows the socket type Qevoryx requests. The panel also needs a terminal that supports ANSI escape sequences, such as Windows Terminal.
 
 ## Build
 
@@ -27,45 +31,73 @@ Windows builds are available, but raw socket support depends on your system setu
 make
 ```
 
-If you want a static binary, use:
+For a static binary, use:
 
 ```bash
 make static
 ```
 
-## Quick start
+## Start the panel
 
-Start with the interactive interface if you would rather answer a few questions than remember argument positions:
+Run Qevoryx without arguments:
+
+```bash
+sudo ./qevoryx
+```
+
+The control panel opens immediately. You can also ask for it directly:
 
 ```bash
 sudo ./qevoryx --tui
 ```
 
-If you prefer the command line, the basic form is:
+## Panel controls
+
+* Arrow keys move through fields and actions
+* Tab switches between the configuration panel and the actions panel
+* Enter starts editing a field or activates the selected action
+* Left and Right change a choice or adjust a number
+* Space selects the next choice
+* Esc cancels the current edit
+* S saves your settings
+* D restores the safe defaults
+* Q quits
+* Ctrl+C also quits
+
+The top of the panel shows a compact mark made from `/assets/logobg.png`. The status area explains what each action does, and the launch action asks you to type YES before any live traffic starts.
+
+## Remembered settings
+
+The panel loads your previous configuration when it starts. It saves your choices when you press S and when you confirm a launch.
+
+The settings file lives here:
+
+* Linux: `$HOME/.config/qevoryx/settings.ini`
+* Windows: `%APPDATA%\Qevoryx\settings.ini`
+
+If the file is missing or contains an invalid value, Qevoryx quietly returns to the safe defaults instead of guessing.
+
+## Command line
+
+The command line remains available for scripts and quick runs:
 
 ```bash
-sudo ./qevoryx <target_ip> <port> [threads] [mode] [rate] [flags]
+sudo ./qevoryx --cli <target_ip> <port> [threads] [mode] [rate] [flags]
 ```
 
-For example, to generate mixed traffic with 1000 workers and no rate limit:
+For example, to generate mixed traffic with one worker and a rate limit:
 
 ```bash
-sudo ./qevoryx 192.168.1.100 25565 1000 0 0
+sudo ./qevoryx --cli 192.168.1.100 25565 1 0 1000
 ```
 
 To use a specific real interface address:
 
 ```bash
-sudo ./qevoryx 192.168.1.100 25565 1000 1 0 --real-ip wlan0
+sudo ./qevoryx --cli 192.168.1.100 25565 1 1 1000 --real-ip wlan0
 ```
 
-To explicitly enable spoofed source addresses:
-
-```bash
-sudo ./qevoryx 192.168.1.100 25565 1000 1 0 --spoof
-```
-
-Press `Ctrl+C` when you want Qevoryx to stop.
+Press Ctrl+C when you want Qevoryx to stop.
 
 ## Traffic profiles
 
@@ -85,64 +117,26 @@ Press `Ctrl+C` when you want Qevoryx to stop.
 |--------|---------|
 | `--help` | Show the built in help text |
 | `--version` | Show the current version |
-| `--tui` | Start the interactive terminal interface |
+| `--cli` | Use the command line interface |
+| `--tui` | Open the terminal control panel |
 | `--real-ip [interface]` | Use the address from a real network interface |
 | `--spoof` | Explicitly enable spoofed source addresses |
 | `--interface <name>` | Choose the network interface for real source selection |
 
-## Interactive setup
+## Assets
 
-The terminal interface walks you through six short steps:
-
-1. Choose the target address and port
-2. Pick one of the seven traffic profiles
-3. Set the number of workers
-4. Choose between a real interface address and spoofed source addresses
-5. Set the payload range for UDP traffic
-6. Set a per worker rate limit, or leave it unlimited
-
-At the end you get a summary and must confirm before anything starts.
-
-## Project layout
-
-```text
-Qevoryx/
-├── Makefile
-├── LICENSE
-├── assets/
-├── include/
-│   ├── common/
-│   ├── config/
-│   ├── packet/
-│   ├── protocol/
-│   ├── random/
-│   ├── transport/
-│   ├── monitor/
-│   ├── tui/
-│   └── app/
-├── src/
-└── README.md
-```
-
-## Add a new traffic profile
-
-1. Create a header under `include/packet/`
-2. Create the matching implementation under `src/packet/`
-3. Implement the `PacketStrategy::build()` method
-4. Add the new mode to the configuration enum
-5. Register it in the strategy factory
-6. Rebuild the project
-
-Workers, monitoring, and transport code do not need to change when you add a new profile.
+* `/assets/banner.png` is the banner shown at the top of this page
+* `/assets/logobg.png` is the source for the compact panel logo
+* `/assets/logo.png` is the standalone logo
 
 ## Design notes
 
-Qevoryx uses a compact random number generator, cache aligned packet buffers, and a simple worker model. The build uses a portable x86 64 baseline so the resulting binary can run on a wide range of machines.
+Qevoryx keeps packet building, transport, and monitoring separate. Workers use a compact random generator and cache aligned packet buffers. Release builds target a portable x86 64 baseline so the resulting binary can run on many machines.
+
+## Use responsibly
+
+Please run Qevoryx only on systems you own or have written permission to test. The panel asks for confirmation, but the responsibility to choose a valid target remains with you.
 
 ## License
 
 Qevoryx is released under the GNU General Public License v3.0.
-
-## Use responsibly
-
-Please run Qevoryx only on systems you own or have written permission to test.

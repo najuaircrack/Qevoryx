@@ -373,7 +373,8 @@ bool Application::create_workers() {
                 }
 
                 if (sent) {
-                    int ret = sendto(sock, reinterpret_cast<const char*>(buffer.ptr()), buffer.size, 0,
+                    int ret = sendto(sock, reinterpret_cast<const char*>(buffer.ptr()),
+                                   static_cast<int>(buffer.size), 0,
                                    reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin));
                         if (ret > 0) {
                             g_total_packets++;

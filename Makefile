@@ -8,6 +8,7 @@ SOURCES := \
     src/app/application.cpp \
     src/app/thread_affinity.cpp \
     src/config/cli_parser.cpp \
+    src/config/settings_store.cpp \
     src/packet/packet.cpp \
     src/packet/tcp_syn_strategy.cpp \
     src/packet/udp_strategy.cpp \

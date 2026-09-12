@@ -18,14 +18,23 @@ int main(int argc, char** argv) {
             }
         }
 
-        config::Config config;
+        bool explicit_tui = false;
+        for (int i = 1; i < argc; ++i) {
+            if (std::strcmp(argv[i], "--tui") == 0) {
+                explicit_tui = true;
+            }
+        }
 
-        if (config::CliParser::has_tui_flag(argc, argv)) {
-            config = tui::Tui::run();
-            if (!tui::Tui::confirm_launch(config)) {
-                std::cout << "\n  Aborted.\n" << std::endl;
+        config::Config config;
+        if (config::CliParser::has_cli_flag(argc, argv)) {
+            config = config::CliParser::parse(argc, argv);
+        } else if (explicit_tui || argc == 1) {
+            const auto selected = tui::Tui::run();
+            if (!selected) {
+                std::cout << "\n  Cancelled.\n" << std::endl;
                 return 0;
             }
+            config = *selected;
         } else {
             config = config::CliParser::parse(argc, argv);
         }
