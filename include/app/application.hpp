@@ -12,6 +12,8 @@ public:
     int run();
 
     static void request_stop();
+    static void pause();
+    static void resume();
     static std::uint64_t generated_packets();
     static std::uint64_t error_count();
 

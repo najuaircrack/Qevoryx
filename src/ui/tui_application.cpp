@@ -7,6 +7,9 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <algorithm>
+#include <cstddef>
+#include <clocale>
 #include <cstdint>
 #include <csignal>
 #include <cctype>
@@ -211,6 +214,26 @@ std::optional<TuiEvent> translate_key(int key) {
     }
 }
 
+std::optional<TuiEvent> translate_editing_key(int key) {
+    switch (key) {
+        case KEY_ENTER:
+        case '\n':
+        case '\r': return TuiEvent{TuiEventType::Activate};
+        case 27: return TuiEvent{TuiEventType::Cancel};
+        case KEY_LEFT: return TuiEvent{TuiEventType::NavigateLeft};
+        case KEY_RIGHT: return TuiEvent{TuiEventType::NavigateRight};
+        case KEY_BACKSPACE:
+        case 8:
+        case 127: return TuiEvent{TuiEventType::Backspace};
+        case KEY_DC: return TuiEvent{TuiEventType::Delete};
+        default:
+            if (key >= 32 && key <= 126) {
+                return TuiEvent{TuiEventType::Insert, key};
+            }
+            return std::nullopt;
+    }
+}
+
 } // namespace
 
 TuiApplication::TuiApplication(ApplicationController& controller)
@@ -223,6 +246,7 @@ TuiApplication::~TuiApplication() {
 void TuiApplication::initialize() {
     setlocale(LC_ALL, "");
     initscr();
+    terminal_initialized_ = true;
     theme_.initialize();
     cbreak();
     noecho();
@@ -238,15 +262,25 @@ void TuiApplication::initialize() {
 }
 
 void TuiApplication::shutdown() {
+    if (!terminal_initialized_) {
+        return;
+    }
+
     renderer_.shutdown();
     endwin();
+    terminal_initialized_ = false;
 }
 
 int TuiApplication::run() {
+    config_ = controller_.snapshot().config;
     initialize();
 
     std::uint64_t last_generated = 0;
     std::uint64_t last_errors = 0;
+    bool last_running = false;
+    bool last_paused = false;
+    std::size_t last_event_count = 0;
+    std::string last_event_signature;
 
     while (state_.running && !g_quit) {
         const auto event = poll_event();
@@ -255,9 +289,24 @@ int TuiApplication::run() {
         }
 
         const ApplicationSnapshot snapshot = controller_.snapshot();
-        if (snapshot.generated != last_generated || snapshot.errors != last_errors) {
+        std::string event_signature;
+        if (!snapshot.events.empty()) {
+            event_signature = snapshot.events.back().timestamp + " " + snapshot.events.back().message;
+        }
+
+        if (snapshot.generated != last_generated ||
+            snapshot.errors != last_errors ||
+            snapshot.running != last_running ||
+            snapshot.paused != last_paused ||
+            snapshot.events.size() != last_event_count ||
+            event_signature != last_event_signature) {
             last_generated = snapshot.generated;
             last_errors = snapshot.errors;
+            last_running = snapshot.running;
+            last_paused = snapshot.paused;
+            last_event_count = snapshot.events.size();
+            last_event_signature = event_signature;
+            state_.runtime_paused = snapshot.paused;
             state_.dirty = true;
         }
 
@@ -282,6 +331,10 @@ std::optional<TuiEvent> TuiApplication::poll_event() {
     if (key == ERR) {
         return std::nullopt;
     }
+    if (state_.input_mode == InputMode::Editing ||
+        (state_.input_mode == InputMode::Modal && state_.show_launch_confirmation)) {
+        return translate_editing_key(key);
+    }
     return translate_key(key);
 }
 
@@ -294,15 +347,52 @@ void TuiApplication::process_event(const TuiEvent& event) {
     }
 
     if (state_.input_mode == InputMode::Modal) {
-        if (event.type == TuiEventType::Activate) {
-            controller_.reset();
-            config_ = controller_.snapshot().config;
+        if (state_.show_launch_confirmation) {
+            if (event.type == TuiEventType::Insert && state_.confirm_buffer.size() < 3) {
+                state_.confirm_buffer.push_back(static_cast<char>(event.value));
+            } else if (event.type == TuiEventType::Backspace && !state_.confirm_buffer.empty()) {
+                state_.confirm_buffer.pop_back();
+            } else if (event.type == TuiEventType::Activate) {
+                if (state_.confirm_buffer == "YES") {
+                    state_.show_launch_confirmation = false;
+                    state_.input_mode = InputMode::Navigation;
+                    state_.confirm_buffer.clear();
+                    if (valid_config(config_)) {
+                        controller_.launch(config_);
+                        state_.screen = TuiScreen::Runtime;
+                        state_.error_message.clear();
+                    } else {
+                        state_.error_message = "Configuration is invalid";
+                    }
+                } else {
+                    state_.error_message = "Type YES to confirm launch";
+                }
+            } else if (event.type == TuiEventType::Cancel) {
+                state_.show_launch_confirmation = false;
+                state_.input_mode = InputMode::Navigation;
+                state_.confirm_buffer.clear();
+                state_.error_message.clear();
+            }
+            return;
+        }
+
+        if (event.type == TuiEventType::NavigateLeft ||
+            event.type == TuiEventType::NavigateRight ||
+            event.type == TuiEventType::Toggle) {
+            state_.modal_confirm_selected = !state_.modal_confirm_selected;
+        } else if (event.type == TuiEventType::Activate) {
+            if (state_.modal_confirm_selected) {
+                controller_.reset();
+                config_ = controller_.snapshot().config;
+                state_.error_message.clear();
+            }
             state_.show_reset_confirmation = false;
             state_.input_mode = InputMode::Navigation;
-            state_.error_message.clear();
+            state_.modal_confirm_selected = false;
         } else if (event.type == TuiEventType::Cancel) {
             state_.show_reset_confirmation = false;
             state_.input_mode = InputMode::Navigation;
+            state_.modal_confirm_selected = false;
         }
         return;
     }
@@ -327,6 +417,25 @@ void TuiApplication::process_event(const TuiEvent& event) {
             case TuiEventType::NavigateRight:
                 if (state_.edit_cursor < static_cast<int>(state_.edit_buffer.size())) ++state_.edit_cursor;
                 return;
+            case TuiEventType::Insert:
+                if (state_.edit_buffer.size() < 128) {
+                    state_.edit_buffer.insert(static_cast<std::size_t>(state_.edit_cursor),
+                                               1,
+                                               static_cast<char>(event.value));
+                    ++state_.edit_cursor;
+                }
+                return;
+            case TuiEventType::Backspace:
+                if (state_.edit_cursor > 0) {
+                    state_.edit_buffer.erase(static_cast<std::size_t>(state_.edit_cursor) - 1, 1);
+                    --state_.edit_cursor;
+                }
+                return;
+            case TuiEventType::Delete:
+                if (state_.edit_cursor < static_cast<int>(state_.edit_buffer.size())) {
+                    state_.edit_buffer.erase(static_cast<std::size_t>(state_.edit_cursor), 1);
+                }
+                return;
             default:
                 return;
         }
@@ -338,6 +447,11 @@ void TuiApplication::process_event(const TuiEvent& event) {
                 state_.selected_config_row = (state_.selected_config_row + config_row_count - 1) % config_row_count;
             } else if (state_.focus_panel == FocusPanel::Actions) {
                 state_.selected_action = (state_.selected_action + action_count - 1) % action_count;
+            } else if (state_.focus_panel == FocusPanel::EventLog) {
+                const auto& events = controller_.snapshot().events;
+                const int visible_rows = std::max(layout_.event_log().height - 4, 0);
+                const int maximum_offset = std::max(static_cast<int>(events.size()) - visible_rows, 0);
+                state_.event_log_offset = std::min(state_.event_log_offset + 1, maximum_offset);
             }
             break;
         case TuiEventType::NavigateDown:
@@ -345,6 +459,8 @@ void TuiApplication::process_event(const TuiEvent& event) {
                 state_.selected_config_row = (state_.selected_config_row + 1) % config_row_count;
             } else if (state_.focus_panel == FocusPanel::Actions) {
                 state_.selected_action = (state_.selected_action + 1) % action_count;
+            } else if (state_.focus_panel == FocusPanel::EventLog) {
+                state_.event_log_offset = std::max(state_.event_log_offset - 1, 0);
             }
             break;
         case TuiEventType::NavigateLeft:
@@ -374,13 +490,9 @@ void TuiApplication::process_event(const TuiEvent& event) {
             } else if (state_.focus_panel == FocusPanel::Actions) {
                 switch (state_.selected_action) {
                     case 0:
-                        if (valid_config(config_)) {
-                            controller_.launch(config_);
-                            state_.screen = TuiScreen::Runtime;
-                            state_.error_message.clear();
-                        } else {
-                            state_.error_message = "Configuration is invalid";
-                        }
+                        state_.show_launch_confirmation = true;
+                        state_.confirm_buffer.clear();
+                        state_.input_mode = InputMode::Modal;
                         break;
                     case 1:
                         controller_.save(config_);
@@ -390,7 +502,12 @@ void TuiApplication::process_event(const TuiEvent& event) {
                         state_.input_mode = InputMode::Modal;
                         break;
                     case 3:
-                        state_.focus_panel = FocusPanel::EventLog;
+                        if (layout_.event_log_visible()) {
+                            state_.focus_panel = FocusPanel::EventLog;
+                            state_.event_log_offset = 0;
+                        } else {
+                            state_.error_message = "Event log is hidden at this terminal size";
+                        }
                         break;
                     case 4:
                         state_.screen = TuiScreen::Help;
@@ -408,18 +525,20 @@ void TuiApplication::process_event(const TuiEvent& event) {
             break;
         case TuiEventType::NextPanel:
             state_.focus_panel = next_panel(state_.focus_panel);
+            if (state_.focus_panel == FocusPanel::EventLog && !layout_.event_log_visible()) {
+                state_.focus_panel = FocusPanel::Configuration;
+            }
             break;
         case TuiEventType::PreviousPanel:
             state_.focus_panel = previous_panel(state_.focus_panel);
+            if (state_.focus_panel == FocusPanel::EventLog && !layout_.event_log_visible()) {
+                state_.focus_panel = FocusPanel::Actions;
+            }
             break;
         case TuiEventType::Launch:
-            if (valid_config(config_)) {
-                controller_.launch(config_);
-                state_.screen = TuiScreen::Runtime;
-                state_.error_message.clear();
-            } else {
-                state_.error_message = "Configuration is invalid";
-            }
+            state_.show_launch_confirmation = true;
+            state_.confirm_buffer.clear();
+            state_.input_mode = InputMode::Modal;
             break;
         case TuiEventType::Save:
             controller_.save(config_);
@@ -437,10 +556,16 @@ void TuiApplication::process_event(const TuiEvent& event) {
         case TuiEventType::Stop:
             controller_.stop();
             state_.screen = TuiScreen::Main;
+            state_.runtime_paused = false;
             break;
         case TuiEventType::Pause:
-            controller_.pause();
-            state_.runtime_paused = true;
+            if (state_.runtime_paused) {
+                controller_.resume();
+                state_.runtime_paused = false;
+            } else {
+                controller_.pause();
+                state_.runtime_paused = true;
+            }
             break;
         case TuiEventType::Resume:
             controller_.resume();
@@ -450,7 +575,7 @@ void TuiApplication::process_event(const TuiEvent& event) {
             state_.screen = TuiScreen::Main;
             break;
         case TuiEventType::Cancel:
-            if (state_.screen == TuiScreen::Help) {
+            if (state_.screen == TuiScreen::Help || state_.screen == TuiScreen::Runtime) {
                 state_.screen = TuiScreen::Main;
             } else {
                 state_.error_message.clear();
@@ -463,7 +588,9 @@ void TuiApplication::process_event(const TuiEvent& event) {
 
 void TuiApplication::render() {
     layout_.update(state_.screen);
-    renderer_.render(state_, layout_, theme_, controller_.snapshot());
+    ApplicationSnapshot snapshot = controller_.snapshot();
+    snapshot.config = config_;
+    renderer_.render(state_, layout_, theme_, snapshot);
 }
 
 } // namespace ui

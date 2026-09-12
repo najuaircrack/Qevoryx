@@ -22,8 +22,10 @@ void LiveStatusPanel::render(const TuiState&,
     wattroff(window, theme.header | A_BOLD);
 
     const int first_row = 3;
-    const short state_color = snapshot.running ? theme.success : theme.warning;
-    const char* state_text = snapshot.running ? "RUNNING" : "STOPPED";
+    const short state_color = snapshot.paused ? theme.warning :
+                              snapshot.running ? theme.success : theme.warning;
+    const char* state_text = snapshot.paused ? "PAUSED" :
+                             snapshot.running ? "RUNNING" : "STOPPED";
 
     wattron(window, state_color | A_BOLD);
     mvwaddstr(window, first_row, 3, state_text);

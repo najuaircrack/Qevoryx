@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y g++ make
+        run: sudo apt-get update && sudo apt-get install -y g++ make libncursesw5-dev
 
       - name: Build dynamic
         run: make
@@ -46,43 +46,8 @@ jobs:
             qevoryx-linux-amd64.sha256
             qevoryx-linux-amd64-static.sha256
 
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: mingw-w64-x86_64-gcc make
-
-      - name: Build
-        shell: msys2 {0}
-        run: make clean && make static
-
-      - name: Verify
-        shell: msys2 {0}
-        run: file qevoryx-static.exe
-
-      - name: Generate checksums
-        shell: msys2 {0}
-        run: sha256sum qevoryx-static.exe > qevoryx-windows-amd64.exe.sha256
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-amd64
-          path: |
-            qevoryx-static.exe
-            qevoryx-windows-amd64.exe.sha256
-
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -100,8 +65,6 @@ jobs:
           cp artifacts/linux-amd64/qevoryx-static release/qevoryx-linux-amd64-static
           cp artifacts/linux-amd64/qevoryx-linux-amd64.sha256 release/
           cp artifacts/linux-amd64/qevoryx-linux-amd64-static.sha256 release/
-          cp artifacts/windows-amd64/qevoryx-static.exe release/qevoryx-windows-amd64.exe
-          cp artifacts/windows-amd64/qevoryx-windows-amd64.exe.sha256 release/
           chmod +x release/qevoryx-linux-amd64 release/qevoryx-linux-amd64-static
 
       - name: Get version
@@ -118,9 +81,7 @@ jobs:
           files: |
             release/qevoryx-linux-amd64
             release/qevoryx-linux-amd64-static
-            release/qevoryx-windows-amd64.exe
             release/qevoryx-linux-amd64.sha256
             release/qevoryx-linux-amd64-static.sha256
-            release/qevoryx-windows-amd64.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

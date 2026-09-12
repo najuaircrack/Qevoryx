@@ -9,7 +9,7 @@
 
 namespace ui {
 
-void EventLogPanel::render(const TuiState&,
+void EventLogPanel::render(const TuiState& state,
                            const ApplicationSnapshot& snapshot,
                            const TuiTheme& theme) {
     WINDOW* window = this->window();
@@ -27,9 +27,19 @@ void EventLogPanel::render(const TuiState&,
     const int first_row = 3;
     const int available_rows = std::max(rect().height - first_row - 1, 0);
     const int entry_count = std::min(static_cast<int>(snapshot.events.size()), available_rows);
-    const int start = static_cast<int>(snapshot.events.size()) - entry_count;
+    const int maximum_start = std::max(static_cast<int>(snapshot.events.size()) - entry_count, 0);
+    const int start = std::max(maximum_start - state.event_log_offset, 0);
+    const bool focused = state.focus_panel == FocusPanel::EventLog;
 
-    for (int row = 0; row < entry_count; ++row) {
+    if (focused) {
+        wattron(window, theme.accent);
+        mvwaddstr(window, 1, std::max(rect().width - 4, 3), state.event_log_offset > 0 ? "^" : "-");
+        wattroff(window, theme.accent);
+    }
+
+    const int display_count = std::min(entry_count,
+                                       static_cast<int>(snapshot.events.size()) - start);
+    for (int row = 0; row < display_count; ++row) {
         const auto& entry = snapshot.events[static_cast<std::size_t>(start + row)];
         const int y = first_row + row;
 
@@ -42,6 +52,7 @@ void EventLogPanel::render(const TuiState&,
         }
 
         wattron(window, color);
+        mvwaddstr(window, y, 2, focused && row == 0 && state.event_log_offset > 0 ? ">" : " ");
         mvwaddstr(window, y, 3, entry.timestamp.c_str());
         mvwaddstr(window, y, 13, severity_label(entry.severity));
         mvwaddstr(window, y, 21, entry.message.c_str());

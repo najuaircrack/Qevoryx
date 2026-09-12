@@ -9,6 +9,10 @@ struct Rect {
     int y{0};
     int width{0};
     int height{0};
+
+    bool operator==(const Rect& other) const {
+        return x == other.x && y == other.y && width == other.width && height == other.height;
+    }
 };
 
 class TuiLayout {

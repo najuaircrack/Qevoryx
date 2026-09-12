@@ -44,9 +44,11 @@ struct UiEventLogEntry {
 struct ApplicationSnapshot {
     config::Config config;
     bool running{false};
+    bool paused{false};
     bool ready{true};
     std::uint64_t generated{0};
     std::uint64_t errors{0};
+    std::string settings_path;
     std::vector<UiEventLogEntry> events;
 };
 
@@ -63,6 +65,7 @@ struct TuiState {
 
     bool show_help{false};
     bool show_reset_confirmation{false};
+    bool show_launch_confirmation{false};
 
     bool running{true};
     bool dirty{true};
@@ -71,6 +74,9 @@ struct TuiState {
     std::string edit_buffer;
     int edit_cursor{0};
     int edit_row{0};
+    int event_log_offset{0};
+    bool modal_confirm_selected{false};
+    std::string confirm_buffer;
 
     std::string error_message;
 };

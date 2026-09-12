@@ -22,7 +22,9 @@ namespace {
 class BackendApplicationController final : public ui::ApplicationController {
 public:
     explicit BackendApplicationController(config::Config config)
-        : config_(std::move(config)) {}
+        : config_(std::move(config)) {
+        log(ui::Severity::Info, "Qevoryx started");
+    }
 
     ~BackendApplicationController() override {
         stop();
@@ -34,9 +36,11 @@ public:
         ui::ApplicationSnapshot result;
         result.config = config_;
         result.running = running_.load();
+        result.paused = paused_.load();
         result.ready = !running_.load();
         result.generated = app::Application::generated_packets();
         result.errors = app::Application::error_count();
+        result.settings_path = config::SettingsStore::settings_path();
         result.events.assign(events_.begin(), events_.end());
         return result;
     }
@@ -50,10 +54,15 @@ public:
             return;
         }
 
-        config_ = config;
+        config::Config launch_config;
+        {
+            std::lock_guard<std::mutex> lock(events_mutex_);
+            config_ = config;
+            launch_config = config;
+        }
         log(ui::Severity::Info, "Runtime started");
 
-        application_ = std::make_unique<app::Application>(config_, false);
+        application_ = std::make_unique<app::Application>(launch_config, false);
 
         runtime_thread_ = std::thread([this]() {
             std::ostringstream output;
@@ -73,6 +82,8 @@ public:
             }
 
             application_.reset();
+            std::lock_guard<std::mutex> lock(events_mutex_);
+            paused_ = false;
         });
     }
 
@@ -83,11 +94,15 @@ public:
         }
         application_.reset();
         running_ = false;
+        paused_ = false;
     }
 
     void save(const config::Config& config) override {
-        config_ = config;
-        if (config::SettingsStore::save(config_)) {
+        {
+            std::lock_guard<std::mutex> lock(events_mutex_);
+            config_ = config;
+        }
+        if (config::SettingsStore::save(config)) {
             log(ui::Severity::Success, "Settings saved");
         } else {
             log(ui::Severity::Error, "Failed to save settings");
@@ -95,17 +110,32 @@ public:
     }
 
     void reset() override {
-        config_ = config::SettingsStore::defaults();
+        {
+            std::lock_guard<std::mutex> lock(events_mutex_);
+            config_ = config::SettingsStore::defaults();
+        }
         log(ui::Severity::Info, "Settings reset");
     }
 
     void pause() override {
-        stop();
+        paused_ = true;
+        app::Application::pause();
         log(ui::Severity::Warning, "Runtime paused");
     }
 
     void resume() override {
-        launch(config_);
+        if (running_.load()) {
+            app::Application::resume();
+            paused_ = false;
+            log(ui::Severity::Success, "Runtime resumed");
+        } else {
+            config::Config config_copy;
+            {
+                std::lock_guard<std::mutex> lock(events_mutex_);
+                config_copy = config_;
+            }
+            launch(config_copy);
+        }
     }
 
 private:
@@ -140,6 +170,7 @@ private:
     std::unique_ptr<app::Application> application_;
     std::thread runtime_thread_;
     std::atomic<bool> running_{false};
+    std::atomic<bool> paused_{false};
     mutable std::mutex events_mutex_;
     std::deque<ui::UiEventLogEntry> events_;
 };

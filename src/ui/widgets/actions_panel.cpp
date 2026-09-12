@@ -1,8 +1,11 @@
 #include "ui/widgets/actions_panel.hpp"
 
+#include "ui/widgets/selectable_list.hpp"
+
 #include <ncursesw/curses.h>
 
-#include <array>
+#include <string>
+#include <vector>
 
 namespace ui {
 
@@ -21,34 +24,20 @@ void ActionsPanel::render(const TuiState& state,
     mvwaddstr(window, 1, 2, "ACTIONS");
     wattroff(window, theme.header | A_BOLD);
 
-    const std::array<const char*, 6> actions = {{
+    const std::vector<std::string> actions = {
         "Launch",
         "Save Settings",
         "Reset Defaults",
         "View Logs",
         "Help",
         "Quit",
-    }};
+    };
 
     const int first_row = 3;
-    const int max_rows = std::min(static_cast<int>(actions.size()), rect().height - first_row - 1);
-
-    for (int row = 0; row < max_rows; ++row) {
-        const int y = first_row + row;
-        const bool selected = state.focus_panel == FocusPanel::Actions &&
-                              state.selected_action == row;
-
-        if (selected) {
-            wattron(window, theme.selected);
-            mvwhline(window, y, 1, ' ', rect().width - 2);
-            wattroff(window, theme.selected);
-        }
-
-        wattron(window, selected ? theme.selected : theme.secondary);
-        mvwaddstr(window, y, 2, selected ? "> " : "  ");
-        mvwaddstr(window, y, 4, actions[static_cast<std::size_t>(row)]);
-        wattroff(window, selected ? theme.selected : theme.secondary);
-    }
+    const int max_rows = std::max(std::min(static_cast<int>(actions.size()), rect().height - first_row - 1), 0);
+    const SelectableList list(actions, state.selected_action);
+    list.render(window, {2, first_row, std::max(rect().width - 4, 0), max_rows}, theme,
+                state.focus_panel == FocusPanel::Actions);
 
     wnoutrefresh(window);
 }

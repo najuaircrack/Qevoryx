@@ -13,6 +13,7 @@ const char* severity_label(Severity severity) {
 }
 
 const char* state_label(const ApplicationSnapshot& snapshot) {
+    if (snapshot.paused) return "PAUSED";
     if (snapshot.running) return "RUNNING";
     if (snapshot.errors > 0) return "ERROR";
     if (snapshot.ready) return "READY";

@@ -33,6 +33,7 @@ private:
     TuiLayout layout_;
     Renderer renderer_;
     config::Config config_;
+    bool terminal_initialized_{false};
 };
 
 } // namespace ui

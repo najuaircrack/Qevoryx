@@ -133,7 +133,7 @@ void Renderer::render_modal(const TuiState& state,
                             const TuiLayout&,
                             const TuiTheme& theme,
                             const ApplicationSnapshot& snapshot) {
-    if (!state.show_reset_confirmation) {
+    if (!state.show_reset_confirmation && !state.show_launch_confirmation) {
         modal_.hide();
         return;
     }
@@ -144,11 +144,21 @@ void Renderer::render_modal(const TuiState& state,
     const int y = std::max((LINES - height) / 2, 0);
 
     modal_.resize({x, y, width, height});
-    modal_.set_content(
-        "RESET SETTINGS",
-        {"Reset all settings to safe defaults?"},
-        "Cancel",
-        "Reset");
+    if (state.show_launch_confirmation) {
+        modal_.set_content(
+            "CONFIRM LIVE TRAFFIC",
+            {"Only continue for systems you are authorized to test.",
+             "Type YES and press Enter to launch.",
+             "> " + state.confirm_buffer},
+            "Esc Cancel",
+            "YES required");
+    } else {
+        modal_.set_content(
+            "RESET SETTINGS",
+            {"Reset all settings to safe defaults?"},
+            "Cancel",
+            "Reset");
+    }
     modal_.show();
     modal_.render(state, snapshot, theme);
 }

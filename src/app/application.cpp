@@ -35,6 +35,7 @@
 namespace {
 
 std::atomic<bool> g_running{true};
+std::atomic<bool> g_paused{false};
 std::atomic<std::uint64_t> g_total_packets{0};
 std::atomic<std::uint64_t> g_total_errors{0};
 std::atomic<std::uint32_t> g_threads_ready{0};
@@ -191,6 +192,15 @@ namespace app {
 
 void Application::request_stop() {
     g_running = false;
+    g_paused = false;
+}
+
+void Application::pause() {
+    g_paused = true;
+}
+
+void Application::resume() {
+    g_paused = false;
 }
 
 std::uint64_t Application::generated_packets() {
@@ -204,6 +214,7 @@ std::uint64_t Application::error_count() {
 Application::Application(config::Config config, bool install_signal_handlers)
     : config_(std::move(config)), install_signal_handlers_(install_signal_handlers) {
     g_running = true;
+    g_paused = false;
     g_total_packets = 0;
     g_total_errors = 0;
     g_threads_ready = 0;
@@ -372,6 +383,11 @@ bool Application::create_workers() {
             packet::PacketContext ctx{config_, rng, destination_ip};
 
             while (g_running) {
+                if (g_paused) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    continue;
+                }
+
                 bool sent = strategy->build(ctx, buffer);
                 if (!sent) {
                     g_total_errors++;

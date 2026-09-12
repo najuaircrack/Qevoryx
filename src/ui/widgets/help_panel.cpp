@@ -22,19 +22,24 @@ void HelpPanel::render(const TuiState&,
     mvwaddstr(window, 1, 3, "HELP");
     wattroff(window, theme.header | A_BOLD);
 
-    const std::array<std::pair<const char*, const char*>, 12> rows = {{
+    const std::array<std::pair<const char*, const char*>, 17> rows = {{
         {"Navigation", ""},
-        {"? ?", "Move within a panel"},
-        {"? ?", "Change a value or choice"},
+        {"Up Down", "Move within a panel"},
+        {"Left Right", "Change a value or choice"},
         {"Tab", "Switch panels"},
+        {"Editing", ""},
         {"Enter", "Edit a value or activate an action"},
         {"Esc", "Cancel editing or close a dialog"},
+        {"Backspace", "Delete the character before the cursor"},
         {"Actions", ""},
         {"L", "Launch the configured test"},
         {"S", "Save settings"},
         {"D", "Restore safe defaults"},
         {"?", "Show this help"},
         {"Q", "Quit Qevoryx"},
+        {"Runtime", ""},
+        {"P", "Pause or resume"},
+        {"R", "Return to the configuration panel"},
     }};
 
     const int first_row = 3;

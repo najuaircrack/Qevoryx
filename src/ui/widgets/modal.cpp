@@ -16,7 +16,7 @@ void Modal::set_content(const std::string& title,
     confirm_label_ = confirm_label;
 }
 
-void Modal::render(const TuiState&,
+void Modal::render(const TuiState& state,
                    const ApplicationSnapshot&,
                    const TuiTheme& theme) {
     WINDOW* window = this->window();
@@ -43,19 +43,20 @@ void Modal::render(const TuiState&,
         wattroff(window, theme.secondary);
     }
 
-    const int button_y = height - 3;
+    const int button_y = std::max(height - 3, first_row);
     const int cancel_width = static_cast<int>(cancel_label_.size()) + 4;
     const int confirm_width = static_cast<int>(confirm_label_.size()) + 4;
     const int total_width = cancel_width + confirm_width + 4;
     const int start_x = std::max((width - total_width) / 2, 3);
 
-    wattron(window, theme.secondary);
+    const bool cancel_selected = !state.modal_confirm_selected;
+    wattron(window, cancel_selected ? theme.selected : theme.secondary);
     mvwaddstr(window, button_y, start_x, ("[ " + cancel_label_ + " ]").c_str());
-    wattroff(window, theme.secondary);
+    wattroff(window, cancel_selected ? theme.selected : theme.secondary);
 
-    wattron(window, theme.danger | A_BOLD);
+    wattron(window, state.modal_confirm_selected ? theme.danger | A_BOLD : theme.secondary);
     mvwaddstr(window, button_y, start_x + cancel_width + 4, ("[ " + confirm_label_ + " ]").c_str());
-    wattroff(window, theme.danger | A_BOLD);
+    wattroff(window, state.modal_confirm_selected ? theme.danger | A_BOLD : theme.secondary);
 
     wnoutrefresh(window);
 }

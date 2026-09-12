@@ -17,6 +17,10 @@ void Panel::resize(const Rect& rect) {
         return;
     }
 
+    if (window_ != nullptr && panel_ != nullptr && rect == rect_) {
+        return;
+    }
+
     if (window_ != nullptr) {
         if (panel_ != nullptr) {
             del_panel(panel_);

@@ -2,9 +2,27 @@
 
 #include <ncursesw/curses.h>
 
+#include <algorithm>
+#include <cctype>
+#include <clocale>
+#include <cstring>
+#include <string>
+
 namespace ui {
 
 void TuiTheme::initialize() {
+    const char* locale_name = setlocale(LC_ALL, nullptr);
+    std::string normalized;
+    if (locale_name != nullptr) {
+        normalized = locale_name;
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                       [](unsigned char character) {
+                           return static_cast<char>(std::tolower(character));
+                       });
+    }
+    unicode_available = normalized.find("utf-8") != std::string::npos ||
+                        normalized.find("utf8") != std::string::npos;
+
     colors_available = has_colors();
     if (!colors_available) {
         return;

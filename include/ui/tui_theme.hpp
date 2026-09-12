@@ -28,6 +28,7 @@ struct TuiTheme {
     short header{0};
 
     bool colors_available{false};
+    bool unicode_available{false};
 
     void initialize();
     short pair(TuiColorRole role) const;

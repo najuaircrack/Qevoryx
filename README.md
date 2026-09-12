@@ -34,7 +34,7 @@ On Debian or Ubuntu, install the development package with:
 sudo apt install libncursesw5-dev
 ```
 
-Windows builds are available, but raw socket support depends on your system setup. If you use Windows, run Qevoryx from an elevated shell and confirm that your platform allows the socket type Qevoryx requests. The panel also needs a terminal that supports ANSI escape sequences, such as Windows Terminal.
+Use a terminal that can show UTF-8 characters. Qevoryx falls back to simpler arrows and status marks when your locale does not use UTF-8.
 
 ## Build
 
@@ -65,17 +65,18 @@ sudo ./qevoryx --tui
 ## Panel controls
 
 * Arrow keys move through fields and actions
-* Tab switches between the configuration panel and the actions panel
+* Tab moves focus through the configuration, actions, status, and event log panels
 * Enter starts editing a field or activates the selected action
 * Left and Right change a choice or adjust a number
 * Space selects the next choice
 * Esc cancels the current edit
+* P pauses or resumes the runtime
 * S saves your settings
 * D restores the safe defaults
 * Q quits
 * Ctrl+C also quits
 
-The panel uses ncursesw windows and panels internally. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly.
+The panel uses ncursesw windows and panels internally. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly. When the event log has focus, the arrow keys scroll through older events.
 
 ## Screens
 
@@ -83,16 +84,16 @@ The main screen shows configuration, actions, status, and the latest events. Lau
 
 Press `?` at any time to open the help screen. Resetting settings opens a centered confirmation dialog so you can cancel safely.
 
-The top of the panel shows a truecolor mark made from `/assets/logobg.png`. The layout adapts to your terminal size, and the status area explains what each action does. The launch action asks you to type YES before any live traffic starts.
+The top of the panel shows a compact colored Qevoryx mark inspired by `/assets/logobg.png`. The layout adapts to your terminal size. The launch action asks you to type YES before any live traffic starts.
 
 ## Remembered settings
 
-The panel loads your previous configuration when it starts. It saves your choices when you press S and when you confirm a launch.
+The panel loads your previous configuration when it starts. Press S to save your choices.
 
 The settings file lives here:
 
-* Linux: `$HOME/.config/qevoryx/settings.ini`
-* Windows: `%APPDATA%\Qevoryx\settings.ini`
+* Default location: `$HOME/.config/qevoryx/settings.ini`
+* Custom location: `$XDG_CONFIG_HOME/qevoryx/settings.ini`
 
 If the file is missing or contains an invalid value, Qevoryx quietly returns to the safe defaults instead of guessing.
 

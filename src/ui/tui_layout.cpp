@@ -9,15 +9,16 @@ namespace ui {
 void TuiLayout::update(TuiScreen screen) {
     screen_ = screen;
 
-    const int width = std::max(COLS, 80);
-    const int height = std::max(LINES, 24);
+    const int width = std::max(COLS, 1);
+    const int height = std::max(LINES, 1);
 
-    header_ = {0, 0, width, 6};
-    footer_ = {0, height - 2, width, 2};
+    const int header_height = std::min(height >= 24 ? 6 : 3, height);
+    header_ = {0, 0, width, header_height};
+    footer_ = {0, std::max(height - 2, header_height), width, std::min(2, std::max(height - header_height, 0))};
 
     const int body_top = header_.height;
     const int body_bottom = height - footer_.height;
-    const int body_height = std::max(body_bottom - body_top, 10);
+    const int body_height = std::max(body_bottom - body_top, 0);
 
     if (screen == TuiScreen::Help) {
         configuration_ = {0, body_top, width, body_height};
@@ -29,10 +30,10 @@ void TuiLayout::update(TuiScreen screen) {
     }
 
     if (screen == TuiScreen::Runtime) {
-        const int runtime_width = std::max(width * 55 / 100, 40);
-        const int live_width = std::max(width - runtime_width, 30);
+        const int runtime_width = std::max(width * 55 / 100, 1);
+        const int live_width = std::max(width - runtime_width, 0);
         const int log_height = height >= 30 ? std::min(8, body_height / 4) : 0;
-        const int panel_height = std::max(body_height - log_height, 8);
+        const int panel_height = std::max(body_height - log_height, 0);
 
         configuration_ = {0, body_top, runtime_width, panel_height};
         actions_ = {runtime_width, body_top, live_width, panel_height};
@@ -43,11 +44,11 @@ void TuiLayout::update(TuiScreen screen) {
     }
 
     const bool compact = height < 30 || width < 100;
-    const int log_height = compact ? (height >= 26 ? 4 : 0) : std::min(8, body_height / 4);
-    const int status_height = compact ? 4 : 5;
-    const int panel_height = std::max(body_height - log_height - status_height, 8);
-    const int configuration_width = std::max(width * 58 / 100, 42);
-    const int actions_width = std::max(width - configuration_width, 30);
+    const int log_height = compact ? (height >= 26 ? 5 : 0) : std::min(8, body_height / 4);
+    const int status_height = std::min(compact ? 4 : 5, body_height);
+    const int panel_height = std::max(body_height - log_height - status_height, 0);
+    const int configuration_width = width >= 72 ? std::max(width * 58 / 100, 42) : std::max(width / 2, 1);
+    const int actions_width = std::max(width - configuration_width, 0);
 
     configuration_ = {0, body_top, configuration_width, panel_height};
     actions_ = {configuration_width, body_top, actions_width, panel_height};

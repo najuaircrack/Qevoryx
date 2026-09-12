@@ -1,5 +1,7 @@
 #include "ui/widgets/configuration_panel.hpp"
 
+#include "ui/widgets/value_editor.hpp"
+
 #include <ncursesw/curses.h>
 
 #include <algorithm>
@@ -53,6 +55,18 @@ std::vector<std::string> descriptions() {
     };
 }
 
+ValueEditor::Mode editor_mode(int row) {
+    switch (row) {
+        case 2: return ValueEditor::Mode::Enum;
+        case 4: return ValueEditor::Mode::Boolean;
+        case 1:
+        case 3:
+        case 6:
+        case 7: return ValueEditor::Mode::Integer;
+        default: return ValueEditor::Mode::String;
+    }
+}
+
 } // namespace
 
 void ConfigurationPanel::render(const TuiState& state,
@@ -91,17 +105,24 @@ void ConfigurationPanel::render(const TuiState& state,
 
         const int marker_x = 2;
         const int label_x = 4;
-        const int value_x = std::max(rect().width - 22, label_x + 18);
-        const int description_x = std::max(value_x + 14, label_x + 24);
+        const int value_x = std::max(rect().width - 30, label_x + 12);
+        const int description_x = value_x + 18;
 
         wattron(window, selected ? theme.selected : theme.secondary);
         mvwaddstr(window, y, marker_x, selected ? ">" : " ");
         mvwaddstr(window, y, label_x, row_labels[static_cast<std::size_t>(row)].c_str());
         wattroff(window, selected ? theme.selected : theme.secondary);
 
-        wattron(window, selected ? theme.selected : theme.primary | A_BOLD);
-        mvwaddstr(window, y, value_x, row_values[static_cast<std::size_t>(row)].c_str());
-        wattroff(window, selected ? theme.selected : theme.primary | A_BOLD);
+        const bool editing = state.input_mode == InputMode::Editing && state.edit_row == row;
+        std::string value = row_values[static_cast<std::size_t>(row)];
+        if (editing) {
+            value = state.edit_buffer;
+        }
+        const ValueEditor editor(editor_mode(row), value);
+        const int editor_width = std::max(std::min(rect().width - value_x - 2, 18), 0);
+        if (editor_width > 0) {
+            editor.render(window, {value_x, y, editor_width, 1}, theme, selected, editing);
+        }
 
         if (description_x < rect().width - 2) {
             wattron(window, selected ? theme.selected : theme.muted);

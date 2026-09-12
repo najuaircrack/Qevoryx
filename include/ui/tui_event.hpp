@@ -11,6 +11,9 @@ enum class TuiEventType {
     Activate,
     Cancel,
     Toggle,
+    Insert,
+    Backspace,
+    Delete,
 
     NextPanel,
     PreviousPanel,
