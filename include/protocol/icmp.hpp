@@ -2,15 +2,26 @@
 
 #include <cstdint>
 
+#ifdef _MSC_VER
+    #pragma pack(push, 1)
+    #define PACKED_STRUCT struct
+#else
+    #define PACKED_STRUCT struct __attribute__((packed))
+#endif
+
 namespace protocol {
 
-struct IcmpHeader {
+PACKED_STRUCT IcmpHeader {
     std::uint8_t  type;
     std::uint8_t  code;
     std::uint16_t checksum;
     std::uint16_t id;
     std::uint16_t sequence;
-} __attribute__((packed));
+};
+
+#ifdef _MSC_VER
+    #pragma pack(pop)
+#endif
 
 constexpr std::uint8_t ICMP_TYPE_ECHO_REQUEST = 8;
 constexpr std::uint8_t ICMP_TYPE_ECHO_REPLY = 0;

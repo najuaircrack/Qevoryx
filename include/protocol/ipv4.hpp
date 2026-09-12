@@ -2,9 +2,16 @@
 
 #include <cstdint>
 
+#ifdef _MSC_VER
+    #pragma pack(push, 1)
+    #define PACKED_STRUCT struct
+#else
+    #define PACKED_STRUCT struct __attribute__((packed))
+#endif
+
 namespace protocol {
 
-struct IPv4Header {
+PACKED_STRUCT IPv4Header {
     std::uint8_t  version_ihl;
     std::uint8_t  tos;
     std::uint16_t total_length;
@@ -15,7 +22,11 @@ struct IPv4Header {
     std::uint16_t checksum;
     std::uint32_t source;
     std::uint32_t destination;
-} __attribute__((packed));
+};
+
+#ifdef _MSC_VER
+    #pragma pack(pop)
+#endif
 
 constexpr std::uint8_t IPv4_VERSION_IHL = 0x45;
 constexpr std::uint16_t IPv4_HEADER_SIZE = sizeof(IPv4Header);

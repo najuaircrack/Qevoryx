@@ -2,9 +2,16 @@
 
 #include <cstdint>
 
+#ifdef _MSC_VER
+    #pragma pack(push, 1)
+    #define PACKED_STRUCT struct
+#else
+    #define PACKED_STRUCT struct __attribute__((packed))
+#endif
+
 namespace protocol {
 
-struct TcpHeader {
+PACKED_STRUCT TcpHeader {
     std::uint16_t source_port;
     std::uint16_t destination_port;
     std::uint32_t sequence;
@@ -14,7 +21,11 @@ struct TcpHeader {
     std::uint16_t window;
     std::uint16_t checksum;
     std::uint16_t urgent_pointer;
-} __attribute__((packed));
+};
+
+#ifdef _MSC_VER
+    #pragma pack(pop)
+#endif
 
 constexpr std::uint8_t TCP_DATA_OFFSET_5 = 0x50;
 constexpr std::uint8_t TCP_DATA_OFFSET_6 = 0x60;

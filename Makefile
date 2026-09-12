@@ -27,6 +27,18 @@ OBJECTS_STATIC := $(SOURCES:.cpp=.static.o)
 TARGET := qevoryx
 TARGET_STATIC := qevoryx-static
 
+# Detect OS
+ifeq ($(OS),Windows_NT)
+    TARGET := qevoryx.exe
+    TARGET_STATIC := qevoryx-static.exe
+    CXXFLAGS += -lws2_32
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Linux)
+        CXXFLAGS += -lpthread
+    endif
+endif
+
 .PHONY: all static clean
 
 all: $(TARGET)
@@ -47,3 +59,6 @@ $(TARGET_STATIC): $(OBJECTS_STATIC)
 
 clean:
 	rm -f $(OBJECTS) $(OBJECTS_STATIC) $(TARGET) $(TARGET_STATIC)
+ifeq ($(OS),Windows_NT)
+	del /Q /F $(OBJECTS) $(OBJECTS_STATIC) $(TARGET) $(TARGET_STATIC) 2>nul
+endif

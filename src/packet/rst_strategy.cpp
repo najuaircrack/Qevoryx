@@ -5,8 +5,8 @@
 #include "protocol/tcp.hpp"
 #include "protocol/checksum.hpp"
 #include "random/fast_random.hpp"
+#include "common/platform.hpp"
 #include <cstring>
-#include <arpa/inet.h>
 
 namespace packet {
 

@@ -1,6 +1,16 @@
 #include "transport/file_transport.hpp"
+#include "common/platform.hpp"
 #include <fcntl.h>
+
+#if QEVORYX_PLATFORM_WINDOWS
+#include <io.h>
+#define open _open
+#define close _close
+#define write _write
+#define ssize_t int
+#else
 #include <unistd.h>
+#endif
 
 namespace transport {
 

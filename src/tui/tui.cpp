@@ -1,11 +1,9 @@
 #include "tui/tui.hpp"
+#include "common/platform.hpp"
 #include <iostream>
 #include <string>
 #include <cstdlib>
 #include <cstring>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <ifaddrs.h>
 
 namespace tui {
 
@@ -128,7 +126,8 @@ config::Config Tui::run() {
     cfg.use_spoof_ips = input_bool("  Use spoofed source IPs?", true);
 
     if (!cfg.use_spoof_ips) {
-        // List available interfaces
+#if QEVORYX_PLATFORM_LINUX
+        // List available interfaces (Linux only)
         std::cout << "\n  Available network interfaces:\n";
         struct ifaddrs* ifaddr = nullptr;
         if (getifaddrs(&ifaddr) == 0) {
@@ -147,6 +146,9 @@ config::Config Tui::run() {
             }
             freeifaddrs(ifaddr);
         }
+#else
+        std::cout << "\n  (Interface listing requires Npcap on Windows)\n";
+#endif
 
         cfg.real_ip_interface = input_string("  Interface name", "eth0");
     }

