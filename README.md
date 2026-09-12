@@ -1,144 +1,148 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Qevoryx banner" width="880">
+</p>
+
 # Qevoryx
 
-High-performance raw-socket packet generator with modular architecture, IP spoofing, and pluggable protocol strategies.
+Qevoryx is a modular packet generator for people who need to test network behaviour in a controlled environment. It keeps configuration clear, gives you useful feedback while it runs, and shuts down cleanly when you ask it to stop.
 
-## Features
+## What you get
 
-- **7 packet modes** — Mixed, TCP SYN, UDP, ICMP Echo, TCP ACK, TCP RST, TCP SYN-ACK
-- **TUI mode** — interactive terminal configuration when `--tui` is passed
-- **Source selection** — real interface IP by default, spoofed source IPs only with explicit `--spoof`
-- **Modular architecture** — strategy pattern for packet types, pluggable transports, pluggable monitors
-- **Performance-optimized** — xoshiro256** PRNG, CPU affinity pinning, stack-allocated cache-line aligned packets, no-memset hot paths, thread-local PPS counters, yield-based rate limiting
-- **Real-time monitoring** — live PPS, total packets, max PPS tracking
+* Seven traffic profiles, including mixed TCP, UDP, and ICMP generation
+* An interactive terminal setup for people who prefer guided configuration
+* Clear source selection, with your real interface address used by default
+* A modular design that keeps packet building, transport, and monitoring separate
+* Live packet and error counters so you can see what the tool is doing
+* Predictable shutdown that waits for workers to finish before the process exits
 
 ## Requirements
 
-- Linux (requires raw sockets)
-- Root privileges (`sudo`)
-- g++ with C++17 support
-- pthread
+Qevoryx is primarily built for Linux because raw sockets are simplest there. You will need root privileges, a C++17 compiler, and pthread support.
 
-## Building
+Windows builds are available, but raw socket support depends on your system setup. If you are on Windows and the tool cannot open a raw socket, run it from an elevated shell and confirm that your platform allows the socket type Qevoryx requests.
+
+## Build
 
 ```bash
 make
 ```
 
-## Usage
+If you want a static binary, use:
 
 ```bash
-# CLI mode
+make static
+```
+
+## Quick start
+
+Start with the interactive interface if you would rather answer a few questions than remember argument positions:
+
+```bash
+sudo ./qevoryx --tui
+```
+
+If you prefer the command line, the basic form is:
+
+```bash
 sudo ./qevoryx <target_ip> <port> [threads] [mode] [rate] [flags]
-
-# TUI mode (interactive)
-sudo ./qevoryx --tui
 ```
 
-### Modes
-
-| Value | Mode | Description |
-|-------|------|-------------|
-| 0 | Mixed | Round-robin TCP+UDP+ICMP |
-| 1 | TCP SYN | SYN flood with random seq |
-| 2 | UDP | Random payload flood |
-| 3 | ICMP Echo | Ping flood |
-| 4 | TCP ACK | ACK flood |
-| 5 | TCP RST | RST flood |
-| 6 | TCP SYN-ACK | SYN+ACK flood |
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--help` | Show CLI help |
-| `--version` | Show version information |
-| `--tui` | Launch interactive terminal UI |
-| `--real-ip [interface]` | Use the real interface IP (default) |
-| `--spoof` | Explicitly enable spoofed source IPs |
-| `--interface <name>` | Specify network interface for real IP |
-
-### Examples
+For example, to generate mixed traffic with 1000 workers and no rate limit:
 
 ```bash
-# Mixed TCP+UDP+ICMP, 5000 threads
-sudo ./qevoryx 192.168.1.100 25565 5000 0 0
-
-# TCP SYN, 10000 threads
-sudo ./qevoryx 192.168.1.100 80 10000 1 0
-
-# UDP flood with per-thread 1M PPS limit
-sudo ./qevoryx 192.168.1.100 53 5000 2 1000000
-
-# ICMP with real IP from wlan0
-sudo ./qevoryx 192.168.1.100 25565 5000 3 0 --real-ip wlan0
-sudo ./qevoryx 192.168.1.100 25565 5000 1 0 --spoof
-
-# Interactive TUI
-sudo ./qevoryx --tui
+sudo ./qevoryx 192.168.1.100 25565 1000 0 0
 ```
 
-### Stopping
+To use a specific real interface address:
 
-Press `Ctrl+C` for graceful shutdown.
-
-## TUI Mode
-
-The interactive TUI guides you through 6 steps:
-
-1. **Target** — set IP and port
-2. **Attack Mode** — pick from 7 packet strategies
-3. **Workers** — set thread count (max 10000)
-4. **IP Mode** — real by default, spoofed only if explicitly selected
-5. **Payload** — min/max bytes for UDP modes
-6. **Rate Limit** — per-thread PPS cap
-
-After configuration, you get a summary and confirm before launch.
-
-## Architecture
-
+```bash
+sudo ./qevoryx 192.168.1.100 25565 1000 1 0 --real-ip wlan0
 ```
+
+To explicitly enable spoofed source addresses:
+
+```bash
+sudo ./qevoryx 192.168.1.100 25565 1000 1 0 --spoof
+```
+
+Press `Ctrl+C` when you want Qevoryx to stop.
+
+## Traffic profiles
+
+| Value | Profile | What it sends |
+|-------|---------|---------------|
+| 0 | Mixed | Alternates between TCP SYN, UDP, and ICMP traffic |
+| 1 | TCP SYN | TCP packets with the SYN flag |
+| 2 | UDP | UDP packets with a random payload |
+| 3 | ICMP Echo | ICMP echo requests |
+| 4 | TCP ACK | TCP packets with the ACK flag |
+| 5 | TCP RST | TCP packets with the RST flag |
+| 6 | TCP SYN ACK | TCP packets with both SYN and ACK flags |
+
+## Command line options
+
+| Option | Meaning |
+|--------|---------|
+| `--help` | Show the built in help text |
+| `--version` | Show the current version |
+| `--tui` | Start the interactive terminal interface |
+| `--real-ip [interface]` | Use the address from a real network interface |
+| `--spoof` | Explicitly enable spoofed source addresses |
+| `--interface <name>` | Choose the network interface for real source selection |
+
+## Interactive setup
+
+The terminal interface walks you through six short steps:
+
+1. Choose the target address and port
+2. Pick one of the seven traffic profiles
+3. Set the number of workers
+4. Choose between a real interface address and spoofed source addresses
+5. Set the payload range for UDP traffic
+6. Set a per worker rate limit, or leave it unlimited
+
+At the end you get a summary and must confirm before anything starts.
+
+## Project layout
+
+```text
 Qevoryx/
 ├── Makefile
 ├── LICENSE
+├── assets/
 ├── include/
-│   ├── common/          constants, types (PacketBuffer, PacketStatistics)
-│   ├── config/          Config struct, CLI parser
-│   ├── packet/          PacketStrategy interface, 6 strategy implementations
-│   ├── protocol/        IPv4/TCP/UDP/ICMP headers, checksum algorithms
-│   ├── random/          xoshiro256** PRNG
-│   ├── transport/       PacketTransport interface, file/test transports
-│   ├── monitor/         Monitor interface, console/null monitors
-│   ├── tui/             Interactive terminal configuration
-│   └── app/             Application lifecycle, thread affinity
-├── src/                 implementations
+│   ├── common/
+│   ├── config/
+│   ├── packet/
+│   ├── protocol/
+│   ├── random/
+│   ├── transport/
+│   ├── monitor/
+│   ├── tui/
+│   └── app/
+├── src/
 └── README.md
 ```
 
-## Adding a New Protocol
+## Add a new traffic profile
 
-1. Create `include/packet/xxx_strategy.hpp`
-2. Create `src/packet/xxx_strategy.cpp`
-3. Implement `PacketStrategy::build()`
-4. Add `PacketMode::Xxx` to config enum
-5. Register in `create_strategy()` factory
-6. Done — workers, monitor, transport unchanged
+1. Create a header under `include/packet/`
+2. Create the matching implementation under `src/packet/`
+3. Implement the `PacketStrategy::build()` method
+4. Add the new mode to the configuration enum
+5. Register it in the strategy factory
+6. Rebuild the project
 
-## Performance Optimizations
+Workers, monitoring, and transport code do not need to change when you add a new profile.
 
-| Optimization | Effect |
-|-------------|--------|
-| CPU affinity pinning | Prevents L1/L2 cache thrashing |
-| Thread-local PPS counters | Eliminates atomic cache-line bouncing |
-| Skip IP checksum (kernel computes) | Saves one full buffer walk per packet |
-| No memset in hot loop | Explicit field writes only |
-| Stack-allocated aligned packets | No heap allocator in hot path |
-| yield() rate limiting | No scheduler penalty |
-| -O3 -march=x86-64 -flto | Portable optimized baseline, LTO, loop unrolling |
+## Design notes
+
+Qevoryx uses a compact random number generator, cache aligned packet buffers, and a simple worker model. The build uses a portable x86 64 baseline so the resulting binary can run on a wide range of machines.
 
 ## License
 
-GNU General Public License v3.0
+Qevoryx is released under the GNU General Public License v3.0.
 
-## Disclaimer
+## Use responsibly
 
-For authorized testing and educational purposes only.
+Please run Qevoryx only on systems you own or have written permission to test.
