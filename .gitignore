@@ -1,4 +1,6 @@
 # Build artifacts
+qevoryx
+qevoryx-static
 stress
 stress.exe
 *.o

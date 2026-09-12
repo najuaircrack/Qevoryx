@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ make
+
+      - name: Build dynamic binary
+        run: make clean && make
+
+      - name: Build static binary
+        run: make clean && make static
+
+      - name: Verify binaries
+        run: |
+          file qevoryx
+          file qevoryx-static
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate checksums
+        run: |
+          sha256sum qevoryx > checksums-dynamic.txt
+          sha256sum qevoryx-static > checksums-static.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Qevoryx ${{ steps.version.outputs.VERSION }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            qevoryx
+            qevoryx-static
+            checksums-dynamic.txt
+            checksums-static.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
