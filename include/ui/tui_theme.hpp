@@ -27,7 +27,14 @@ struct TuiTheme {
     short selected{0};
     short header{0};
 
+    // Logo pairs (brand white + red), used by draw_logo().
+    short logo_light{0};
+    short logo_red{0};
+    short logo_light_on_red{0};
+    short logo_red_on_light{0};
+
     bool colors_available{false};
+    bool truecolor_available{false};
     bool unicode_available{false};
 
     void initialize();

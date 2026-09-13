@@ -5,6 +5,8 @@
 
 namespace common {
 
+constexpr char VERSION[] = "4.0.7";
+
 constexpr int MAX_THREADS = 10000;
 constexpr std::size_t MAX_PACKET_SIZE = 1500;
 constexpr std::size_t MAX_SPOOF_IPS = 2000000;

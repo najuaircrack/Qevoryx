@@ -30,6 +30,7 @@ SOURCES := \
     src/ui/tui_theme.cpp \
     src/ui/tui_layout.cpp \
     src/ui/renderer.cpp \
+    src/ui/logo.cpp \
     src/ui/widgets/panel.cpp \
     src/ui/widgets/header.cpp \
     src/ui/widgets/configuration_panel.cpp \

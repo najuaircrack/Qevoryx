@@ -22,6 +22,7 @@ public:
 private:
     void initialize();
     void shutdown();
+    void show_splash();
 
     std::optional<TuiEvent> poll_event();
     void process_event(const TuiEvent& event);

@@ -1,4 +1,5 @@
 # Build artifacts
+build/
 qevoryx
 qevoryx.exe
 qevoryx-static
@@ -11,6 +12,10 @@ stress.exe
 
 # Generated files
 SPEC.txt
+
+# Python
+__pycache__/
+*.pyc
 
 # IDE
 .vscode/

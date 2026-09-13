@@ -2,6 +2,7 @@
 #include "config/settings_store.hpp"
 #include "app/application.hpp"
 #include "app/application_controller.hpp"
+#include "common/constants.hpp"
 #include "ui/tui_application.hpp"
 #include <iostream>
 #include <exception>
@@ -15,7 +16,7 @@ int main(int argc, char** argv) {
                 return 0;
             }
             if (std::strcmp(argv[i], "--version") == 0) {
-                std::cout << "Qevoryx 4.0.7" << std::endl;
+                std::cout << "Qevoryx " << common::VERSION << std::endl;
                 return 0;
             }
         }

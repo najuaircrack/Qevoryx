@@ -1,6 +1,9 @@
 #include "ui/tui_application.hpp"
 
+#include "common/constants.hpp"
 #include "common/platform.hpp"
+#include "ui/logo.hpp"
+#include "ui/logo_data.hpp"
 
 #include <ncursesw/curses.h>
 
@@ -11,6 +14,7 @@
 #include <cstddef>
 #include <clocale>
 #include <cstdint>
+#include <cstdlib>
 #include <csignal>
 #include <cctype>
 #include <optional>
@@ -271,9 +275,65 @@ void TuiApplication::shutdown() {
     terminal_initialized_ = false;
 }
 
+void TuiApplication::show_splash() {
+    if (std::getenv("QEVORYX_NO_SPLASH") != nullptr) {
+        return;
+    }
+
+    // Pick the largest splash logo that fits, leaving room for the wordmark.
+    const logo::Art* art = nullptr;
+    for (const logo::Art& candidate : logo::kSplashSizes) {
+        if (LINES >= candidate.height + 6 && COLS >= candidate.width + 4) {
+            art = &candidate;
+            break;
+        }
+    }
+    if (art == nullptr) {
+        return; // terminal too small; go straight to the panel
+    }
+
+    const auto draw_centered = [&](int y, int attr, const std::string& text) {
+        if (y < 0 || y >= LINES) {
+            return;
+        }
+        const int x = std::max((COLS - static_cast<int>(text.size())) / 2, 0);
+        wattron(stdscr, attr);
+        mvwaddstr(stdscr, y, x, text.c_str());
+        wattroff(stdscr, attr);
+    };
+
+    const int block_height = art->height + 4;
+    const int top = std::max((LINES - block_height) / 2, 0);
+    const int logo_left = std::max((COLS - art->width) / 2, 0);
+
+    werase(stdscr);
+    draw_logo(stdscr, top, logo_left, *art, theme_);
+
+    const int text_row = top + art->height + 1;
+    draw_centered(text_row, theme_.header | A_BOLD, "Q E V O R Y X");
+    draw_centered(text_row + 1, theme_.secondary,
+                  std::string("Terminal Control Panel  -  v") + common::VERSION);
+    draw_centered(text_row + 3, theme_.muted, "press any key");
+
+    wnoutrefresh(stdscr);
+    doupdate();
+
+    // Hold for ~1.5s; any key skips ahead.
+    for (int i = 0; i < 30 && !g_quit; ++i) {
+        if (getch() != ERR) {
+            break;
+        }
+    }
+
+    werase(stdscr);
+    wnoutrefresh(stdscr);
+    doupdate();
+}
+
 int TuiApplication::run() {
     config_ = controller_.snapshot().config;
     initialize();
+    show_splash();
 
     std::uint64_t last_generated = 0;
     std::uint64_t last_errors = 0;
