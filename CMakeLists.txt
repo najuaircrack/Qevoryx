@@ -17,6 +17,7 @@ set(QEVORYX_CORE_SOURCES
   src/app/application.cpp
   src/app/application_controller.cpp
   src/app/thread_affinity.cpp
+  src/common/network_interfaces.cpp
   src/config/cli_parser.cpp
   src/config/settings_store.cpp
   src/monitor/console_monitor.cpp

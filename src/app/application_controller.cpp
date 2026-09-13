@@ -1,8 +1,10 @@
 #include "app/application_controller.hpp"
 
 #include "app/application.hpp"
+#include "common/network_interfaces.hpp"
 #include "config/settings_store.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <ctime>
@@ -23,6 +25,8 @@ class BackendApplicationController final : public app::ApplicationController {
 public:
     explicit BackendApplicationController(config::Config config)
         : config_(std::move(config)) {
+        refresh_interfaces();
+        select_available_interface(config_);
         log(ui::Severity::Info, "Qevoryx started");
     }
 
@@ -31,6 +35,7 @@ public:
     }
 
     ui::ApplicationSnapshot snapshot() const override {
+        const auto interfaces = current_interfaces();
         std::lock_guard<std::mutex> lock(events_mutex_);
 
         ui::ApplicationSnapshot result;
@@ -41,6 +46,7 @@ public:
         result.generated = app::Application::generated_packets();
         result.errors = app::Application::error_count();
         result.settings_path = config::SettingsStore::settings_path();
+        result.interfaces = interfaces;
         result.events.assign(events_.begin(), events_.end());
         return result;
     }
@@ -110,9 +116,11 @@ public:
     }
 
     void reset() override {
+        config::Config defaults = config::SettingsStore::defaults();
+        select_available_interface(defaults);
         {
             std::lock_guard<std::mutex> lock(events_mutex_);
-            config_ = config::SettingsStore::defaults();
+            config_ = std::move(defaults);
         }
         log(ui::Severity::Info, "Settings reset");
     }
@@ -139,6 +147,8 @@ public:
     }
 
 private:
+    static constexpr auto interface_refresh_interval = std::chrono::seconds(5);
+
     static std::string timestamp() {
         const auto now = std::chrono::system_clock::now();
         const std::time_t time = std::chrono::system_clock::to_time_t(now);
@@ -166,6 +176,37 @@ private:
         }
     }
 
+    void refresh_interfaces() {
+        std::lock_guard<std::mutex> lock(interfaces_mutex_);
+        interfaces_ = common::list_network_interfaces();
+        interfaces_updated_ = std::chrono::steady_clock::now();
+    }
+
+    void select_available_interface(config::Config& config) const {
+        const auto interfaces = current_interfaces();
+        if (interfaces.empty()) return;
+
+        const bool matches = std::any_of(
+            interfaces.begin(), interfaces.end(),
+            [&config](const common::NetworkInterface& interface) {
+                return interface.name == config.real_ip_interface;
+            });
+        if (!matches) config.real_ip_interface = interfaces.front().name;
+    }
+
+    std::vector<common::NetworkInterface> current_interfaces() const {
+        std::lock_guard<std::mutex> lock(interfaces_mutex_);
+        const auto now = std::chrono::steady_clock::now();
+        if (interfaces_.empty() ||
+            now - interfaces_updated_ >= interface_refresh_interval) {
+            auto interfaces = common::list_network_interfaces();
+            interfaces_ = interfaces;
+            interfaces_updated_ = now;
+            return interfaces;
+        }
+        return interfaces_;
+    }
+
     config::Config config_;
     std::unique_ptr<app::Application> application_;
     std::thread runtime_thread_;
@@ -173,6 +214,9 @@ private:
     std::atomic<bool> paused_{false};
     mutable std::mutex events_mutex_;
     std::deque<ui::UiEventLogEntry> events_;
+    mutable std::mutex interfaces_mutex_;
+    mutable std::vector<common::NetworkInterface> interfaces_;
+    mutable std::chrono::steady_clock::time_point interfaces_updated_{};
 };
 
 } // namespace

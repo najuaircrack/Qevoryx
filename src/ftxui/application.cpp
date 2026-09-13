@@ -5,6 +5,7 @@
 #include <ftxui/dom/node.hpp>
 #include <ftxui/screen/screen.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <chrono>
@@ -41,13 +42,19 @@ std::optional<std::uint32_t> parse_u32(const std::string& value) {
     return result;
 }
 
-bool valid_config(const config::Config& config) {
+bool valid_config(const ui::ApplicationSnapshot& snapshot) {
+    const config::Config& config = snapshot.config;
     struct in_addr address {};
     if (inet_pton(AF_INET, config.target_ip.c_str(), &address) != 1) return false;
     if (config.target_port == 0 || config.worker_count == 0 ||
         config.worker_count > static_cast<std::uint32_t>(common::MAX_THREADS)) return false;
     if (config.payload_min > config.payload_max || config.payload_max > 1472) return false;
-    return !config.real_ip_interface.empty();
+    if (config.real_ip_interface.empty()) return false;
+    if (config.use_spoof_ips || snapshot.interfaces.empty()) return true;
+    return std::any_of(snapshot.interfaces.begin(), snapshot.interfaces.end(),
+                       [&config](const common::NetworkInterface& interface) {
+                           return interface.name == config.real_ip_interface;
+                       });
 }
 
 void set_profile(config::Config& config, int index) {
@@ -79,7 +86,25 @@ std::string initial_edit_value(const config::Config& config, int row) {
     return view::config_values(config)[static_cast<std::size_t>(row)];
 }
 
-void adjust_config(config::Config& config, int row, int direction) {
+int interface_index(const ui::ApplicationSnapshot& snapshot) {
+    for (std::size_t index = 0; index < snapshot.interfaces.size(); ++index) {
+        if (snapshot.interfaces[index].name == snapshot.config.real_ip_interface) {
+            return static_cast<int>(index);
+        }
+    }
+    return 0;
+}
+
+void adjust_interface(ui::ApplicationSnapshot& snapshot, int direction) {
+    if (snapshot.interfaces.empty()) return;
+    const int count = static_cast<int>(snapshot.interfaces.size());
+    const int index = (interface_index(snapshot) + direction + count) % count;
+    snapshot.config.real_ip_interface =
+        snapshot.interfaces[static_cast<std::size_t>(index)].name;
+}
+
+void adjust_config(ui::ApplicationSnapshot& snapshot, int row, int direction) {
+    config::Config& config = snapshot.config;
     const auto change = [direction](std::uint32_t value, std::uint32_t step,
                                     std::uint32_t maximum) {
         if (direction > 0) return value >= maximum ? maximum : value + step;
@@ -104,6 +129,9 @@ void adjust_config(config::Config& config, int row, int direction) {
             break;
         case 5:
             config.use_spoof_ips = !config.use_spoof_ips;
+            break;
+        case 6:
+            adjust_interface(snapshot, direction);
             break;
         case 7:
             config.payload_min = change(config.payload_min, 16U, 1472U);
@@ -193,7 +221,7 @@ bool commit_edit(ui::ApplicationSnapshot& snapshot, ui::TuiState& state) {
         }
         default: return false;
     }
-    if (!valid_config(config)) {
+    if (!valid_config(snapshot)) {
         state.error_message = "Configuration is invalid. Check IP, workers, and payload range.";
         return false;
     }
@@ -210,6 +238,7 @@ void refresh_runtime(ui::ApplicationSnapshot& snapshot,
     snapshot.generated = latest.generated;
     snapshot.errors = latest.errors;
     snapshot.settings_path = latest.settings_path;
+    snapshot.interfaces = latest.interfaces;
     snapshot.events = latest.events;
 }
 
@@ -217,18 +246,24 @@ void next_panel(ui::TuiState& state, bool reverse) {
     int panel = 0;
     switch (state.focus_panel) {
         case ui::FocusPanel::Configuration: panel = 0; break;
-        case ui::FocusPanel::Actions: panel = 1; break;
-        case ui::FocusPanel::EventLog: panel = 2; break;
+        case ui::FocusPanel::Interfaces: panel = 1; break;
+        case ui::FocusPanel::Actions: panel = 2; break;
+        case ui::FocusPanel::EventLog: panel = 3; break;
         default: panel = 0; break;
     }
-    panel = reverse ? (panel + 2) % 3 : (panel + 1) % 3;
+    panel = reverse ? (panel + 3) % 4 : (panel + 1) % 4;
     state.focus_panel = panel == 0 ? ui::FocusPanel::Configuration
-                        : panel == 1 ? ui::FocusPanel::Actions
+                        : panel == 1 ? ui::FocusPanel::Interfaces
+                        : panel == 2 ? ui::FocusPanel::Actions
                                      : ui::FocusPanel::EventLog;
 }
 
 void start_edit(const ui::ApplicationSnapshot& snapshot, ui::TuiState& state) {
     if (state.focus_panel != ui::FocusPanel::Configuration) return;
+    if (state.selected_config_row == 6) {
+        state.focus_panel = ui::FocusPanel::Interfaces;
+        return;
+    }
     state.edit_row = state.selected_config_row;
     state.edit_buffer = initial_edit_value(snapshot.config, state.edit_row);
     state.input_mode = ui::InputMode::Editing;
@@ -265,8 +300,8 @@ bool activate_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
                      app::ApplicationController& controller) {
     switch (state.selected_action) {
         case 0:
-            if (!snapshot.running && valid_config(snapshot.config)) open_launch_confirmation(state);
-            else if (!valid_config(snapshot.config))
+            if (!snapshot.running && valid_config(snapshot)) open_launch_confirmation(state);
+            else if (!valid_config(snapshot))
                 state.error_message = "Fix the configuration before launching.";
             return true;
         case 1: controller.stop(); return true;
@@ -276,7 +311,7 @@ bool activate_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
             else state.error_message = "Runtime is not active.";
             return true;
         case 3:
-            if (valid_config(snapshot.config)) controller.save(snapshot.config);
+            if (valid_config(snapshot)) controller.save(snapshot.config);
             else state.error_message = "Cannot save an invalid configuration.";
             return true;
         case 4: open_reset_confirmation(state); return true;
@@ -463,6 +498,8 @@ int run(int argc, char** argv) {
             if (event == Event::ArrowDown) {
                 if (state.focus_panel == ui::FocusPanel::Configuration)
                     state.selected_config_row = (state.selected_config_row + 1) % view::config_row_count;
+                else if (state.focus_panel == ui::FocusPanel::Interfaces)
+                    adjust_interface(snapshot, 1);
                 else if (state.focus_panel == ui::FocusPanel::Actions)
                     state.selected_action = (state.selected_action + 1) % view::action_count;
                 else if (state.event_log_offset + view::visible_log_rows < snapshot.events.size())
@@ -474,6 +511,8 @@ int run(int argc, char** argv) {
                     state.selected_config_row =
                         (state.selected_config_row + view::config_row_count - 1) %
                         view::config_row_count;
+                else if (state.focus_panel == ui::FocusPanel::Interfaces)
+                    adjust_interface(snapshot, -1);
                 else if (state.focus_panel == ui::FocusPanel::Actions)
                     state.selected_action = (state.selected_action + view::action_count - 1) %
                                             view::action_count;
@@ -482,17 +521,24 @@ int run(int argc, char** argv) {
             }
             if (event == Event::ArrowLeft || event == Event::ArrowRight) {
                 if (state.focus_panel == ui::FocusPanel::Configuration)
-                    adjust_config(snapshot.config, state.selected_config_row,
+                    adjust_config(snapshot, state.selected_config_row,
                                   event == Event::ArrowRight ? 1 : -1);
+                else if (state.focus_panel == ui::FocusPanel::Interfaces)
+                    adjust_interface(snapshot, event == Event::ArrowRight ? 1 : -1);
                 return true;
             }
             if (event == Event::Character(' ')) {
                 if (state.focus_panel == ui::FocusPanel::Configuration)
-                    adjust_config(snapshot.config, state.selected_config_row, 1);
+                    adjust_config(snapshot, state.selected_config_row, 1);
+                else if (state.focus_panel == ui::FocusPanel::Interfaces)
+                    adjust_interface(snapshot, 1);
                 return true;
             }
             if (event == Event::Return) {
                 if (state.focus_panel == ui::FocusPanel::Configuration) start_edit(snapshot, state);
+                else if (state.focus_panel == ui::FocusPanel::Interfaces) {
+                    return true;
+                }
                 else if (state.focus_panel == ui::FocusPanel::Actions) {
                     if (!activate_action(snapshot, state, *controller)) {
                         screen.Exit();
@@ -521,7 +567,7 @@ int run(int argc, char** argv) {
                 return true;
             }
             if (event == Event::Character('s') || event == Event::Character('S')) {
-                if (valid_config(snapshot.config)) controller->save(snapshot.config);
+                if (valid_config(snapshot)) controller->save(snapshot.config);
                 else state.error_message = "Cannot save an invalid configuration.";
                 snapshot = controller->snapshot();
                 return true;

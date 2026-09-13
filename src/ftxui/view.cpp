@@ -55,6 +55,22 @@ inline const char* source_label(bool spoofed) {
     return spoofed ? "Spoofed" : "Real interface";
 }
 
+inline int interface_index(const ApplicationSnapshot& snapshot) {
+    for (std::size_t index = 0; index < snapshot.interfaces.size(); ++index) {
+        if (snapshot.interfaces[index].name == snapshot.config.real_ip_interface) {
+            return static_cast<int>(index);
+        }
+    }
+    return 0;
+}
+
+inline std::string interface_display(const ApplicationSnapshot& snapshot) {
+    if (snapshot.interfaces.empty()) return "No IPv4 interfaces";
+    const int index = interface_index(snapshot);
+    return snapshot.interfaces[static_cast<std::size_t>(index)].name + "  " +
+           snapshot.interfaces[static_cast<std::size_t>(index)].address;
+}
+
 std::vector<std::string> config_values(const config::Config& config) {
     return {
         config.target_ip,
@@ -110,6 +126,8 @@ inline Element header(const ApplicationSnapshot& snapshot, int width, int height
 
 inline Element config_panel(const ApplicationSnapshot& snapshot, const TuiState& state, int width) {
     const auto values = config_values(snapshot.config);
+    auto display_values = values;
+    display_values[6] = interface_display(snapshot);
     const std::vector<std::string> labels = {
         "Target IP", "Target Port", "Traffic Profile", "Workers",
         "Rate Limit", "Source Mode", "Interface", "Payload Min", "Payload Max",
@@ -124,7 +142,7 @@ inline Element config_panel(const ApplicationSnapshot& snapshot, const TuiState&
         const bool selected = state.focus_panel == FocusPanel::Configuration &&
                               state.selected_config_row == index;
         const bool editing = selected && state.input_mode == InputMode::Editing;
-        const std::string& value = editing ? state.edit_buffer : values[index];
+        const std::string& value = editing ? state.edit_buffer : display_values[index];
         auto marker = text(selected ? "▶ " : "  ") |
                       color(selected ? theme::Accent() : theme::Muted());
         auto label = text(labels[index]) |
@@ -145,6 +163,37 @@ inline Element config_panel(const ApplicationSnapshot& snapshot, const TuiState&
                               focusPosition(0, state.selected_config_row);
     return panel("CONFIGURATION", yframe(std::move(configuration_rows)) | vscroll_indicator,
                  state.focus_panel == FocusPanel::Configuration) | flex;
+}
+
+inline Element interface_panel(const ApplicationSnapshot& snapshot, const TuiState& state) {
+    Elements rows;
+    if (snapshot.interfaces.empty()) {
+        rows.push_back(text("No IPv4 interfaces found") | color(theme::Muted()));
+    } else {
+        const int selected = interface_index(snapshot);
+        for (int index = 0; index < static_cast<int>(snapshot.interfaces.size()); ++index) {
+            const auto& interface = snapshot.interfaces[static_cast<std::size_t>(index)];
+            const bool current = index == selected;
+            auto row = hbox({
+                text(current ? "▶ " : "  ") |
+                    color(current ? theme::Accent() : theme::Muted()),
+                text(interface.name) |
+                    color(current ? theme::Primary() : theme::Secondary()) |
+                    size(WIDTH, EQUAL, 16),
+                text("  "),
+                text(interface.address) |
+                    color(current ? theme::Primary() : theme::Muted()),
+                filler(),
+            });
+            if (current) row = row | bgcolor(theme::SelectionBg());
+            rows.push_back(std::move(row));
+        }
+    }
+
+    auto body = vbox(std::move(rows)) | focusPosition(0, interface_index(snapshot));
+    return panel("INTERFACES", yframe(std::move(body)) | vscroll_indicator,
+                 state.focus_panel == FocusPanel::Interfaces) |
+           size(WIDTH, EQUAL, 32);
 }
 
 inline std::vector<std::string> action_labels(const ApplicationSnapshot& snapshot) {
@@ -258,11 +307,11 @@ inline Element footer(const ApplicationSnapshot& snapshot, const TuiState& state
                      segment("Chars", "Edit value")}) | color(theme::Border());
     }
     if (snapshot.running) {
-        return hbox({text(" "), segment("↑↓", "Move"), segment("P", "Pause/Resume"),
+        return hbox({text(" "), segment("↑↓", "Move/Select"), segment("P", "Pause/Resume"),
                      segment("X", "Stop"), segment("Tab", "Panel"), segment("?", "Help"),
                      segment("Q", "Quit")}) | color(theme::Border());
     }
-    return hbox({text(" "), segment("↑↓", "Move"), segment("←→", "Change"),
+    return hbox({text(" "), segment("↑↓", "Move/Select"), segment("←→", "Change"),
                  segment("Enter", "Edit"), segment("Tab", "Panel"), segment("L", "Launch"),
                  segment("S", "Save"), segment("?", "Help"),
                  segment("Q", "Quit")}) | color(theme::Border());
@@ -378,8 +427,18 @@ inline Element compact_event(const ApplicationSnapshot& snapshot, const TuiState
 
 inline Element main_screen(const ApplicationSnapshot& snapshot, const TuiState& state,
                            int width, int height) {
-    auto body = hbox({config_panel(snapshot, state, width), text(" "),
-                      actions_panel(snapshot, state)}) | flex;
+    Element body;
+    if (width >= 140) {
+        body = hbox({config_panel(snapshot, state, width), text(" "),
+                     interface_panel(snapshot, state), text(" "),
+                     actions_panel(snapshot, state)}) | flex;
+    } else {
+        body = vbox({
+            hbox({config_panel(snapshot, state, width), text(" "),
+                  actions_panel(snapshot, state)}) | flex,
+            interface_panel(snapshot, state),
+        }) | flex;
+    }
     if (height < 12)
         return vbox({compact_header(snapshot), body}) | bgcolor(theme::Bg());
     if (height < 16)

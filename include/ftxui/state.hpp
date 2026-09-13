@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/network_interfaces.hpp"
 #include "config/config.hpp"
 
 #include <cstdint>
@@ -17,6 +18,7 @@ enum class TuiScreen {
 
 enum class FocusPanel {
     Configuration,
+    Interfaces,
     Actions,
     Status,
     EventLog
@@ -49,6 +51,7 @@ struct ApplicationSnapshot {
     std::uint64_t generated{0};
     std::uint64_t errors{0};
     std::string settings_path;
+    std::vector<common::NetworkInterface> interfaces;
     std::vector<UiEventLogEntry> events;
 };
 
