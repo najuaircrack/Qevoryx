@@ -21,7 +21,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y g++ cmake
 
       - name: Configure
-        run: cmake -S . -B build
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release
@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 0
 
       - name: Configure
-        run: cmake -S . -B build
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release
@@ -78,9 +78,9 @@ jobs:
       - name: Collect binaries
         run: |
           mkdir -p release
-          cp artifacts/linux-amd64/qevoryx release/qevoryx-linux-amd64
+          cp artifacts/linux-amd64/build/qevoryx release/qevoryx-linux-amd64
           cp artifacts/linux-amd64/qevoryx-linux-amd64.sha256 release/
-          cp artifacts/windows-amd64/qevoryx.exe release/qevoryx-windows-amd64.exe
+          cp artifacts/windows-amd64/build/Release/qevoryx.exe release/qevoryx-windows-amd64.exe
           cp artifacts/windows-amd64/qevoryx-windows-amd64.exe.sha256 release/
           chmod +x release/qevoryx-linux-amd64
 
