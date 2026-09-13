@@ -1,5 +1,7 @@
 #include "ui/widgets/live_status_panel.hpp"
 
+#include "ui/widgets/widget_paint.hpp"
+
 #include <ncursesw/curses.h>
 
 #include <string>
@@ -14,32 +16,42 @@ void LiveStatusPanel::render(const TuiState&,
         return;
     }
 
+    const int width = rect().width;
+    const int height = rect().height;
+
     werase(window);
-    box(window, 0, 0);
+    paint::frame(window, theme.border);
+    paint::title(window, theme.header | A_BOLD, "LIVE STATUS", width);
 
-    wattron(window, theme.header | A_BOLD);
-    mvwaddstr(window, 1, 2, "LIVE STATUS");
-    wattroff(window, theme.header | A_BOLD);
+    const int content_x = paint::content_x() + 1;
+    const int content_w = paint::content_width(width);
+    const int first_row = paint::content_y();
+    const int last_row = paint::content_bottom(height);
+    const int value_x = content_x + 15;
+    const int value_w = std::max(content_x + content_w - value_x, 0);
 
-    const int first_row = 3;
-    const short state_color = snapshot.paused ? theme.warning :
-                              snapshot.running ? theme.success : theme.warning;
+    const char* dot = theme.unicode_available ? "\xE2\x97\x8F" : "*"; // U+25CF
+    const int state_color = snapshot.paused ? theme.warning :
+                            snapshot.running ? theme.success : theme.warning;
     const char* state_text = snapshot.paused ? "PAUSED" :
                              snapshot.running ? "RUNNING" : "STOPPED";
 
-    wattron(window, state_color | A_BOLD);
-    mvwaddstr(window, first_row, 3, state_text);
-    wattroff(window, state_color | A_BOLD);
-
-    wattron(window, theme.secondary);
-    mvwaddstr(window, first_row + 1, 3, "Generated");
-    mvwaddstr(window, first_row + 2, 3, "Errors");
-    wattroff(window, theme.secondary);
-
-    wattron(window, theme.primary | A_BOLD);
-    mvwaddstr(window, first_row + 1, 18, std::to_string(snapshot.generated).c_str());
-    mvwaddstr(window, first_row + 2, 18, std::to_string(snapshot.errors).c_str());
-    wattroff(window, theme.primary | A_BOLD);
+    if (first_row <= last_row) {
+        int cx = paint::text(window, first_row, content_x, content_w, state_color | A_BOLD, dot);
+        paint::text(window, first_row, cx + 1, std::max(content_x + content_w - (cx + 1), 0),
+                    state_color | A_BOLD, state_text);
+    }
+    if (first_row + 1 <= last_row) {
+        paint::text(window, first_row + 1, content_x, 15, theme.secondary, "Generated");
+        paint::text(window, first_row + 1, value_x, value_w, theme.primary | A_BOLD,
+                    std::to_string(snapshot.generated));
+    }
+    if (first_row + 2 <= last_row) {
+        paint::text(window, first_row + 2, content_x, 15, theme.secondary, "Errors");
+        paint::text(window, first_row + 2, value_x, value_w,
+                    (snapshot.errors > 0 ? theme.danger : theme.primary) | A_BOLD,
+                    std::to_string(snapshot.errors));
+    }
 
     wnoutrefresh(window);
 }

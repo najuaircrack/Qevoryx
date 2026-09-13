@@ -1,5 +1,7 @@
 #include "ui/widgets/selectable_list.hpp"
 
+#include "ui/widgets/widget_paint.hpp"
+
 #include <algorithm>
 
 namespace ui {
@@ -15,6 +17,7 @@ void SelectableList::render(WINDOW* window,
         return;
     }
 
+    const char* marker = theme.unicode_available ? "\xE2\x96\xB6" : ">"; // U+25B6
     const int max_rows = std::min(static_cast<int>(items_.size()), rect.height);
     for (int row = 0; row < max_rows; ++row) {
         const int y = rect.y + row;
@@ -26,11 +29,12 @@ void SelectableList::render(WINDOW* window,
             wattroff(window, theme.selected);
         }
 
-        wattron(window, selected ? theme.selected : theme.secondary);
-        mvwaddstr(window, y, rect.x, selected ? "> " : "  ");
-        mvwaddstr(window, y, rect.x + 2,
-                  items_[static_cast<std::size_t>(row)].substr(0, static_cast<std::size_t>(rect.width - 2)).c_str());
-        wattroff(window, selected ? theme.selected : theme.secondary);
+        const int attr = selected ? (theme.selected | A_BOLD) : theme.secondary;
+        // Marker column (2 wide) then the label, all clipped to rect.width.
+        paint::text(window, y, rect.x, 2, attr, selected ? std::string(marker) + " " : "  ");
+        const int label_x = rect.x + 2;
+        const int label_w = std::max(rect.width - 2, 0);
+        paint::text(window, y, label_x, label_w, attr, items_[static_cast<std::size_t>(row)]);
     }
 }
 

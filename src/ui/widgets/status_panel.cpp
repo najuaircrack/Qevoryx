@@ -1,9 +1,12 @@
 #include "ui/widgets/status_panel.hpp"
 
+#include "ui/widgets/widget_paint.hpp"
+
 #include <ncursesw/curses.h>
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 namespace ui {
 namespace {
@@ -31,85 +34,85 @@ void StatusPanel::render(const TuiState& state,
         return;
     }
 
-    werase(window);
-    box(window, 0, 0);
-
     const int width = rect().width;
     const int height = rect().height;
 
-    wattron(window, theme.header | A_BOLD);
-    mvwaddstr(window, 1, 2, "STATUS");
-    wattroff(window, theme.header | A_BOLD);
+    werase(window);
+    paint::frame(window, theme.border);
+    paint::title(window, theme.header | A_BOLD, "STATUS", width);
 
-    // Run-state chip on the title row, right-aligned.
-    const char* state_text = snapshot.paused ? "PAUSED" :
-                             snapshot.running ? "RUNNING" : "READY";
-    const int state_color = snapshot.paused ? theme.warning :
-                            snapshot.running ? theme.success : theme.accent;
-    const int state_x = std::max(width - static_cast<int>(std::string(state_text).size()) - 2, 10);
-    wattron(window, state_color | A_BOLD);
-    mvwaddstr(window, 1, state_x, state_text);
-    wattroff(window, state_color | A_BOLD);
-
-    const auto& config = snapshot.config;
-    const char* bullet = theme.unicode_available ? "\xE2\x80\xA2" : "-"; // bullet
-
-    // A live summary of the loaded configuration, laid out in three columns and
-    // only as many rows as fit inside the border.
-    struct Field {
-        const char* label;
-        std::string value;
-    };
-    const Field fields[] = {
-        {"Target", config.target_ip + ":" + std::to_string(config.target_port)},
-        {"Profile", profile_name(config.packet_mode)},
-        {"Workers", std::to_string(config.worker_count)},
-        {"Source", config.use_spoof_ips ? "Spoofed" : ("Real " + config.real_ip_interface)},
-        {"Rate", config.rate_limit == 0 ? "Unlimited"
-                                        : std::to_string(config.rate_limit) + "/worker"},
-        {"Payload", std::to_string(config.payload_min) + "-" + std::to_string(config.payload_max)},
-    };
-    constexpr int field_count = static_cast<int>(sizeof(fields) / sizeof(fields[0]));
-
-    const int columns = width >= 78 ? 3 : (width >= 52 ? 2 : 1);
-    const int column_width = std::max((width - 4) / columns, 12);
-    const int first_row = 2; // directly under the title; status is a short strip
-    const int content_rows = std::max(height - first_row - 1, 0); // keep off bottom border
-
-    // When an error is present, reserve the last content row for it.
-    const bool has_error = !state.error_message.empty() && content_rows > 0;
-    const int field_rows = std::max(has_error ? content_rows - 1 : content_rows, 0);
-    const int shown = std::min(field_count, field_rows * columns);
-
-    for (int i = 0; i < shown; ++i) {
-        const int row = i / columns;
-        const int col = i % columns;
-        const int y = first_row + row;
-        const int x = 3 + col * column_width;
-
-        wattron(window, theme.muted);
-        mvwaddstr(window, y, x, bullet);
-        mvwaddstr(window, y, x + 2, fields[i].label);
-        wattroff(window, theme.muted);
-
-        const int value_x = x + 2 + 8;
-        const int value_room = std::max(std::min(column_width - (value_x - x) - 1, width - value_x - 1), 0);
-        if (value_room > 0) {
-            wattron(window, theme.primary | A_BOLD);
-            mvwaddstr(window, y, value_x,
-                      fields[i].value.substr(0, static_cast<std::size_t>(value_room)).c_str());
-            wattroff(window, theme.primary | A_BOLD);
-        }
+    const int content_x = paint::content_x();
+    const int content_w = paint::content_width(width);
+    const int first_row = paint::content_y();
+    const int last_row = paint::content_bottom(height);
+    if (content_w <= 0 || first_row > last_row) {
+        wnoutrefresh(window);
+        return;
     }
 
-    // Surface the most recent error on the reserved last row.
-    if (has_error) {
-        const int y = first_row + field_rows;
-        wattron(window, theme.danger | A_BOLD);
-        const int room = std::max(width - 6, 0);
-        mvwaddstr(window, y, 3,
-                  ("! " + state.error_message).substr(0, static_cast<std::size_t>(room)).c_str());
-        wattroff(window, theme.danger | A_BOLD);
+    const char* dot = theme.unicode_available ? "\xE2\x97\x8F" : "*"; // U+25CF
+    const char* warn = theme.unicode_available ? "\xE2\x9A\xA0" : "!"; // U+26A0
+    const char* err = theme.unicode_available ? "\xE2\x9C\x95" : "x";  // U+2715
+
+    // An "indicator" is a colored glyph followed by mostly-neutral text.
+    struct Indicator {
+        const char* glyph;
+        int glyph_color;
+        std::string text;
+        int text_color;
+    };
+    std::vector<Indicator> items;
+    items.push_back({dot, theme.success, "Configuration loaded", theme.secondary});
+    items.push_back({dot, theme.success, "Settings ready", theme.secondary});
+    const bool running = snapshot.running;
+    items.push_back({dot, running ? theme.success : theme.accent,
+                     running ? (snapshot.paused ? "Paused" : "Running") : "Ready",
+                     theme.secondary});
+
+    // First content row: the indicator strip, spread across up to three columns.
+    const int columns = width >= 78 ? 3 : (width >= 52 ? 2 : 1);
+    const int column_w = std::max(content_w / columns, 14);
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        const int col = static_cast<int>(i) % columns;
+        const int rowoff = static_cast<int>(i) / columns;
+        const int y = first_row + rowoff;
+        if (y > last_row) {
+            break;
+        }
+        const int x = content_x + col * column_w;
+        const int cell_room = std::max(std::min(column_w - 1, width - 1 - x), 0);
+        if (cell_room <= 2) {
+            continue;
+        }
+        int cx = paint::text(window, y, x, cell_room, items[i].glyph_color | A_BOLD, items[i].glyph);
+        paint::text(window, y, cx + 1, std::max(x + cell_room - (cx + 1), 0),
+                    items[i].text_color, items[i].text);
+    }
+
+    // Following rows: a compact live config summary, then any warning/error.
+    int y = first_row + (static_cast<int>(items.size()) + columns - 1) / columns;
+    const auto& config = snapshot.config;
+    if (y <= last_row) {
+        const std::string summary =
+            "Target " + config.target_ip + ":" + std::to_string(config.target_port) +
+            "   Profile " + profile_name(config.packet_mode) +
+            "   Workers " + std::to_string(config.worker_count);
+        paint::text(window, y, content_x, content_w, theme.muted, summary);
+        ++y;
+    }
+
+    if (config.payload_min == config.payload_max && y <= last_row) {
+        int cx = paint::text(window, y, content_x, content_w, theme.warning | A_BOLD, warn);
+        paint::text(window, y, cx + 1, std::max(content_x + content_w - (cx + 1), 0),
+                    theme.secondary,
+                    "Payload range is fixed (" + std::to_string(config.payload_min) + ")");
+        ++y;
+    }
+
+    if (!state.error_message.empty() && y <= last_row) {
+        int cx = paint::text(window, y, content_x, content_w, theme.danger | A_BOLD, err);
+        paint::text(window, y, cx + 1, std::max(content_x + content_w - (cx + 1), 0),
+                    theme.danger, state.error_message);
     }
 
     wnoutrefresh(window);

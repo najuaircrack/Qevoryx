@@ -2,8 +2,10 @@
 
 namespace ui {
 
+// Semantic color roles. Widgets ask the theme for a role, never a raw pair.
 enum class TuiColorRole {
     Border,
+    BorderFocused,
     Primary,
     Secondary,
     Muted,
@@ -17,6 +19,7 @@ enum class TuiColorRole {
 
 struct TuiTheme {
     short border{0};
+    short border_focused{0};
     short primary{0};
     short secondary{0};
     short muted{0};

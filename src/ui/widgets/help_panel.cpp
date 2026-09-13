@@ -1,5 +1,7 @@
 #include "ui/widgets/help_panel.hpp"
 
+#include "ui/widgets/widget_paint.hpp"
+
 #include <ncursesw/curses.h>
 
 #include <array>
@@ -15,12 +17,12 @@ void HelpPanel::render(const TuiState&,
         return;
     }
 
-    werase(window);
-    box(window, 0, 0);
+    const int width = rect().width;
+    const int height = rect().height;
 
-    wattron(window, theme.header | A_BOLD);
-    mvwaddstr(window, 1, 3, "HELP");
-    wattroff(window, theme.header | A_BOLD);
+    werase(window);
+    paint::frame(window, theme.border);
+    paint::title(window, theme.header | A_BOLD, "HELP", width);
 
     const std::array<std::pair<const char*, const char*>, 17> rows = {{
         {"Navigation", ""},
@@ -42,19 +44,29 @@ void HelpPanel::render(const TuiState&,
         {"R", "Return to the configuration panel"},
     }};
 
-    const int first_row = 3;
-    const int max_rows = std::min(static_cast<int>(rows.size()), rect().height - first_row - 1);
+    const int content_x = paint::content_x() + 1;
+    const int content_w = paint::content_width(width);
+    const int first_row = paint::content_y();
+    const int last_row = paint::content_bottom(height);
+    const int max_rows = std::min(static_cast<int>(rows.size()),
+                                  std::max(last_row - first_row + 1, 0));
+
+    const int desc_x = content_x + 13;
+    const int desc_w = std::max(content_x + content_w - desc_x, 0);
 
     for (int row = 0; row < max_rows; ++row) {
         const int y = first_row + row;
         const bool heading = rows[static_cast<std::size_t>(row)].second[0] == '\0';
 
-        wattron(window, heading ? theme.header | A_BOLD : theme.secondary);
-        mvwaddstr(window, y, 4, rows[static_cast<std::size_t>(row)].first);
-        if (!heading) {
-            mvwaddstr(window, y, 16, rows[static_cast<std::size_t>(row)].second);
+        if (heading) {
+            paint::text(window, y, content_x, content_w, theme.accent | A_BOLD,
+                        rows[static_cast<std::size_t>(row)].first);
+        } else {
+            paint::text(window, y, content_x, 12, theme.primary | A_BOLD,
+                        rows[static_cast<std::size_t>(row)].first);
+            paint::text(window, y, desc_x, desc_w, theme.secondary,
+                        rows[static_cast<std::size_t>(row)].second);
         }
-        wattroff(window, heading ? theme.header | A_BOLD : theme.secondary);
     }
 
     wnoutrefresh(window);

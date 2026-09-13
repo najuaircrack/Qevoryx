@@ -48,6 +48,8 @@ private:
                       const TuiLayout& layout,
                       const TuiTheme& theme,
                       const ApplicationSnapshot& snapshot);
+    void render_too_small(const TuiTheme& theme);
+    void hide_all();
 
     HeaderWidget header_;
     ConfigurationPanel configuration_;
@@ -59,6 +61,11 @@ private:
     RuntimePanel runtime_;
     LiveStatusPanel live_status_;
     Modal modal_;
+
+    // Track terminal size so a resize can force one full repaint (clearing any
+    // stale content) without clearing on every frame.
+    int last_cols_{-1};
+    int last_lines_{-1};
 };
 
 } // namespace ui
