@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <future>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -352,11 +353,39 @@ int snapshot_main(int width, int height) {
     snapshot.events.push_back({"00:00:00", ui::Severity::Info, "Snapshot mode"});
     ui::TuiState state;
     state.focus_panel = ui::FocusPanel::Configuration;
-    auto document = qevoryx::frontend::render(snapshot, state, width);
+    auto document = qevoryx::frontend::render(snapshot, state, width, height);
     auto screen = Screen::Create(Dimension::Fixed(width), Dimension::Fixed(height));
     Render(screen, document);
     std::cout << screen.ToString();
     return 0;
+}
+
+void show_loading_screen() {
+    auto screen = ScreenInteractive::Fullscreen();
+    int frame = 0;
+    auto component = Renderer([&] {
+        const auto terminal_size = Terminal::Size();
+        return view::loading_screen(frame, terminal_size.dimx, terminal_size.dimy);
+    });
+    component |= CatchEvent([&](Event event) {
+        if (event == Event::Custom) {
+            if (++frame >= 36) screen.Exit();
+            return true;
+        }
+        if (event == Event::CtrlC || event.is_character()) screen.Exit();
+        return true;
+    });
+
+    std::atomic<bool> refresh_running{true};
+    std::thread refresh_thread([&screen, &refresh_running]() {
+        while (refresh_running.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(45));
+            if (refresh_running.load()) screen.PostEvent(Event::Custom);
+        }
+    });
+    screen.Loop(component);
+    refresh_running.store(false);
+    refresh_thread.join();
 }
 
 } // namespace
@@ -388,16 +417,22 @@ int run(int argc, char** argv) {
         }
     }
 
+    show_loading_screen();
+
     try {
-        config::Config config =
-            config::SettingsStore::load().value_or(config::SettingsStore::defaults());
+        auto initialization = std::async(std::launch::async, [] {
+            return config::SettingsStore::load().value_or(config::SettingsStore::defaults());
+        });
+        config::Config config = initialization.get();
         auto controller = app::create_application_controller(std::move(config));
         ui::ApplicationSnapshot snapshot = controller->snapshot();
         ui::TuiState state;
 
         auto screen = ScreenInteractive::Fullscreen();
         auto component = Renderer([&] {
-            return qevoryx::frontend::render(snapshot, state, Terminal::Size().dimx);
+            const auto terminal_size = Terminal::Size();
+            return qevoryx::frontend::render(
+                snapshot, state, terminal_size.dimx, terminal_size.dimy);
         });
 
         component |= CatchEvent([&](Event event) {

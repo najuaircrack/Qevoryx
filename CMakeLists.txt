@@ -51,3 +51,6 @@ add_executable(qevoryx
 )
 target_include_directories(qevoryx PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ftxui)
 target_link_libraries(qevoryx PRIVATE qevoryx_core ftxui::screen ftxui::dom ftxui::component)
+if(MSVC)
+  target_compile_options(qevoryx PRIVATE /bigobj)
+endif()

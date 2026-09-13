@@ -19,6 +19,8 @@ inline constexpr std::size_t visible_log_rows = 5;
 
 std::vector<std::string> config_values(const config::Config& config);
 
-ftxui::Element render(const Snapshot& snapshot, const State& state, int width);
+ftxui::Element loading_screen(int frame, int width, int height);
+
+ftxui::Element render(const Snapshot& snapshot, const State& state, int width, int height);
 
 } // namespace qevoryx::frontend

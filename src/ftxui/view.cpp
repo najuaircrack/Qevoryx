@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "config/config.hpp"
+#include "intro_data.hpp"
 #include "logo.hpp"
 #include "theme.hpp"
 #include "ftxui/state.hpp"
@@ -74,12 +75,12 @@ inline Element panel(const std::string& title, Element body, bool focused) {
            color(border_color);
 }
 
-inline Element header(const ApplicationSnapshot& snapshot, int width) {
-    const auto& art = width >= 150 ? logo::Emblem24
-                      : width >= 105 ? logo::Emblem20
-                      : width >= 88  ? logo::Emblem16
-                      : width >= 76  ? logo::Emblem12
-                                     : logo::Emblem8;
+inline Element header(const ApplicationSnapshot& snapshot, int width, int height) {
+    const auto& art = height >= 45 && width >= 150 ? logo::Emblem24
+                      : height >= 38 && width >= 105 ? logo::Emblem20
+                      : height >= 30 && width >= 88  ? logo::Emblem16
+                      : height >= 26 && width >= 76  ? logo::Emblem12
+                                                     : logo::Emblem8;
     const std::string settings = snapshot.settings_path.empty()
                                      ? std::string("Settings path unavailable")
                                      : snapshot.settings_path;
@@ -140,7 +141,9 @@ inline Element config_panel(const ApplicationSnapshot& snapshot, const TuiState&
         if (selected) row = row | bgcolor(theme::SelectionBg());
         rows.push_back(std::move(row));
     }
-    return panel("CONFIGURATION", vbox(std::move(rows)),
+    auto configuration_rows = vbox(std::move(rows)) |
+                              focusPosition(0, state.selected_config_row);
+    return panel("CONFIGURATION", yframe(std::move(configuration_rows)) | vscroll_indicator,
                  state.focus_panel == FocusPanel::Configuration) | flex;
 }
 
@@ -305,17 +308,97 @@ inline Element confirmation_dialog(const std::string& title, const std::string& 
     return panel(title, body, true) | clear_under | center | size(WIDTH, EQUAL, 58);
 }
 
-inline Element main_screen(const ApplicationSnapshot& snapshot, const TuiState& state, int width) {
+Element loading_screen(int frame, int width, int height) {
+    const bool use_intro = width >= 100 && height >= 30;
+    const auto& intro_art = logo::IntroFrames[
+        static_cast<std::size_t>(frame) % logo::IntroFrames.size()
+    ];
+    const auto& art = use_intro ? intro_art
+                      : height >= 24 && width >= 80  ? logo::Emblem16
+                      : height >= 18 && width >= 60  ? logo::Emblem12
+                                                     : logo::Emblem8;
+    const float progress = static_cast<float>(frame) / 23.0f;
+    const std::string status = frame < 6 ? "Initializing interface"
+                           : frame < 12 ? "Loading configuration"
+                           : frame < 18 ? "Connecting backend"
+                                        : "Ready";
+    return vbox({
+        filler(),
+        center(render_emblem(art)),
+        text("QEVORY") | bold | color(theme::Primary()) | center,
+        text("X") | bold | color(theme::BrandRed()) | center,
+        text(status) | color(theme::Secondary()) | center,
+        gauge(progress) | color(theme::Accent()) | size(WIDTH, EQUAL, 72) | center,
+        filler(),
+    }) | bgcolor(theme::Bg());
+}
+
+inline Element compact_header(const ApplicationSnapshot& snapshot) {
+    const Color state_color = snapshot.running
+                                  ? (snapshot.paused ? theme::Warning() : theme::Success())
+                                  : theme::Accent();
+    const std::string state_text = snapshot.running
+                                       ? (snapshot.paused ? "PAUSED" : "RUNNING")
+                                       : "READY";
+    return hbox({
+        text("QEVORY") | bold | color(theme::Primary()),
+        text("X") | bold | color(theme::BrandRed()), text("  "),
+        text("● ") | color(state_color),
+        text(state_text) | bold | color(state_color), filler(),
+        text("Workers ") | color(theme::Muted()),
+        text(std::to_string(snapshot.config.worker_count)) | color(theme::Secondary()),
+    }) | bgcolor(theme::Bg());
+}
+
+inline Element compact_status(const ApplicationSnapshot& snapshot) {
+    return hbox({
+        text("Generated ") | color(theme::Muted()),
+        text(std::to_string(snapshot.generated)) | color(theme::Secondary()),
+        text("  Errors ") | color(theme::Muted()),
+        text(std::to_string(snapshot.errors)) | color(theme::Secondary()),
+        filler(),
+        text("Target " + snapshot.config.target_ip + ":" +
+             std::to_string(snapshot.config.target_port)) | color(theme::Muted()),
+    }) | bgcolor(theme::Bg());
+}
+
+inline Element compact_event(const ApplicationSnapshot& snapshot, const TuiState& state) {
+    if (snapshot.events.empty())
+        return text(" No events recorded") | color(theme::Muted()) | bgcolor(theme::Bg());
+
+    std::size_t index = snapshot.events.size() - 1;
+    if (state.event_log_offset < index) index -= state.event_log_offset;
+    const auto& event = snapshot.events[index];
+    return hbox({
+        text(" "), text(event.timestamp) | color(theme::Muted()), text("  "),
+        text(severity_text(event.severity)) | bold | color(severity_color(event.severity)),
+        text(" "), text(event.message) | color(theme::Secondary()),
+    }) | bgcolor(theme::Bg());
+}
+
+inline Element main_screen(const ApplicationSnapshot& snapshot, const TuiState& state,
+                           int width, int height) {
     auto body = hbox({config_panel(snapshot, state, width), text(" "),
                       actions_panel(snapshot, state)}) | flex;
-    return vbox({header(snapshot, width), body, status_panel(snapshot),
+    if (height < 12)
+        return vbox({compact_header(snapshot), body}) | bgcolor(theme::Bg());
+    if (height < 16)
+        return vbox({compact_header(snapshot), body, footer(snapshot, state)}) |
+               bgcolor(theme::Bg());
+    if (height < 24)
+        return vbox({compact_header(snapshot), body, compact_status(snapshot),
+                     compact_event(snapshot, state), footer(snapshot, state)}) |
+               bgcolor(theme::Bg());
+
+    return vbox({header(snapshot, width, height), body, status_panel(snapshot),
                  event_log_panel(snapshot, state), footer(snapshot, state)}) |
            bgcolor(theme::Bg());
 }
 
-Element render(const ApplicationSnapshot& snapshot, const TuiState& state, int width) {
+Element render(const ApplicationSnapshot& snapshot, const TuiState& state,
+               int width, int height) {
     if (state.show_help) return help_screen() | bgcolor(theme::Bg());
-    Element screen = main_screen(snapshot, state, width);
+    Element screen = main_screen(snapshot, state, width, height);
     if (state.show_launch_confirmation) {
         screen = dbox({std::move(screen), confirmation_dialog(
             "LAUNCH CONFIRMATION", "Type YES to start live packet generation.",
