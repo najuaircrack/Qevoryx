@@ -63,13 +63,18 @@ BRAND_TONE_RGB: dict[str, tuple[int, int, int]] = {
     "L": (243, 243, 246),
     "R": (230, 32, 42),
 }
-# Terminal-cell aspect ratio (a cell is ~twice as tall as it is wide).
-CELL_ASPECT = 2
+
+# A terminal cell is roughly twice as tall as it is wide. Each cell holds two
+# stacked half-block pixels, so one cell renders as two screen-square pixels
+# vertically. To reproduce the source without vertical stretch, a `width`-cell
+# render must be `width * aspect` pixels tall and therefore `width * aspect / 2`
+# cells tall -- for the square logo that is width/2 rows, NOT width rows.
 
 # Splash logo widths (largest that fits the terminal is used at runtime) and the
-# compact header emblem width.
-BRAND_SPLASH_WIDTHS = (40, 30, 22, 16)
-BRAND_MARK_WIDTH = 7
+# header emblem widths (largest that fits the header interior is used). Both are
+# rendered as true squares.
+BRAND_SPLASH_WIDTHS = (56, 44, 32, 22)
+BRAND_EMBLEM_WIDTHS = (16, 14, 12, 10, 8)
 
 
 def classify_brand(pixel: Pixel, alpha_threshold: int) -> str | None:
@@ -87,14 +92,21 @@ def classify_brand(pixel: Pixel, alpha_threshold: int) -> str | None:
 def brand_rows(
     image_path: Path, width: int, alpha_threshold: int
 ) -> list[list[tuple[str | None, str | None]]]:
-    """Return rows of (top_tone, bottom_tone) pairs, one pair per terminal cell."""
+    """Return rows of (top_tone, bottom_tone) pairs, one pair per terminal cell.
+
+    The result is undistorted: a square source produces a `width` x `width/2`
+    cell grid, which renders as a visual square because each cell is ~twice as
+    tall as it is wide and holds two stacked half-block pixels.
+    """
     image = Image.open(image_path).convert("RGBA")
     mask = image.getchannel("A").point(lambda v: 255 if v >= alpha_threshold else 0)
     bounds = mask.getbbox()
     if bounds is not None:
         image = image.crop(bounds)
 
-    pixel_height = max(2, round(image.height / image.width * width * CELL_ASPECT))
+    # Sample to `width` px wide and a matching number of px tall for the source
+    # aspect ratio; two stacked px per cell => the cell grid keeps proportions.
+    pixel_height = max(2, round(image.height / image.width * width))
     if pixel_height % 2:
         pixel_height += 1
     image = image.resize((width, pixel_height), Image.Resampling.LANCZOS)
@@ -161,6 +173,8 @@ def emit_brand_header(image_path: Path) -> str:
         "//",
         "// Cell::glyph 0=' ' 1=upper-half 2=lower-half 3=full block.",
         "// Tone N=none/transparent L=light(white body) R=red(accent).",
+        "// Every Art is a true square (width x width/2 cells) so it renders",
+        "// undistorted on a terminal whose cells are ~twice as tall as wide.",
         "",
         '#include "ui/logo.hpp"',
         "",
@@ -170,14 +184,21 @@ def emit_brand_header(image_path: Path) -> str:
     ]
     for width in BRAND_SPLASH_WIDTHS:
         rows = brand_rows(image_path, width, alpha_threshold=40)
-        parts.append(emit_brand_art(f"Full{width}", rows))
+        parts.append(emit_brand_art(f"Splash{width}", rows))
         parts.append("")
+    parts.append("// Splash logos, largest first; runtime picks the largest that fits.")
     parts.append("inline constexpr Art kSplashSizes[] = {")
-    parts.append("    " + ", ".join(f"Full{w}" for w in BRAND_SPLASH_WIDTHS) + ",")
+    parts.append("    " + ", ".join(f"Splash{w}" for w in BRAND_SPLASH_WIDTHS) + ",")
     parts.append("};")
     parts.append("")
-    mark_rows = brand_rows(image_path, BRAND_MARK_WIDTH, alpha_threshold=40)
-    parts.append(emit_brand_art("Mark", mark_rows))
+    for width in BRAND_EMBLEM_WIDTHS:
+        rows = brand_rows(image_path, width, alpha_threshold=40)
+        parts.append(emit_brand_art(f"Emblem{width}", rows))
+        parts.append("")
+    parts.append("// Header emblems, largest first; the header picks the largest that fits.")
+    parts.append("inline constexpr Art kEmblemSizes[] = {")
+    parts.append("    " + ", ".join(f"Emblem{w}" for w in BRAND_EMBLEM_WIDTHS) + ",")
+    parts.append("};")
     parts.append("")
     parts.append("} // namespace logo")
     parts.append("} // namespace ui")
@@ -187,7 +208,7 @@ def emit_brand_header(image_path: Path) -> str:
 
 def render_brand_preview(
     rows: list[list[tuple[str | None, str | None]]], out_path: Path,
-    cell_w: int = 16, cell_h: int = 32,
+    cell_w: int = 12, cell_h: int = 24,
 ) -> None:
     from PIL import ImageDraw
 
@@ -421,11 +442,11 @@ def main() -> None:
                 brand_rows(Path(args.image), width, alpha_threshold=40),
                 args.brand_preview / f"splash-{width}.png",
             )
-        render_brand_preview(
-            brand_rows(Path(args.image), BRAND_MARK_WIDTH, alpha_threshold=40),
-            args.brand_preview / f"mark-{BRAND_MARK_WIDTH}.png",
-            cell_w=22, cell_h=44,
-        )
+        for width in BRAND_EMBLEM_WIDTHS:
+            render_brand_preview(
+                brand_rows(Path(args.image), width, alpha_threshold=40),
+                args.brand_preview / f"emblem-{width}.png",
+            )
         print(f"wrote previews to {args.brand_preview}")
 
     if args.brand_header is not None or args.brand_preview is not None:

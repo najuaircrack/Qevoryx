@@ -12,13 +12,19 @@ void TuiLayout::update(TuiScreen screen) {
     const int width = std::max(COLS, 1);
     const int height = std::max(LINES, 1);
 
-    // A tall header (9 rows) leaves room for the logo emblem beside the
-    // wordmark, but only on terminals tall enough that the configuration panel
-    // still fits without clipping; otherwise a 6- or 3-row wordmark header is
-    // used and the emblem is dropped.
+    // The header grows with the terminal so a larger, more legible logo emblem
+    // fits beside the wordmark. Heights are chosen so the configuration panel is
+    // never starved more than the original fixed 6-row header did: a taller
+    // header is only used when there are enough extra rows to pay for it. The
+    // header widget then draws the largest emblem that fits the interior, down
+    // to a small 8x4 square at height 6, or a plain wordmark at height 3.
     int header_height;
-    if (height >= 34) {
+    if (height >= 40) {
+        header_height = 10;
+    } else if (height >= 35) {
         header_height = 9;
+    } else if (height >= 31) {
+        header_height = 7;
     } else if (height >= 24) {
         header_height = 6;
     } else {

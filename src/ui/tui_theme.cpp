@@ -25,14 +25,19 @@ void TuiTheme::initialize() {
 
     colors_available = has_colors();
     if (!colors_available) {
+        // No color support at all (a genuinely monochrome terminal). Pairs stay
+        // 0, so text and the logo still render as the terminal's default
+        // foreground; bold in the widgets keeps them emphasized.
         return;
     }
 
     start_color();
     use_default_colors();
 
-    // Prefer exact brand colors when the terminal can redefine its palette;
-    // otherwise fall back to the standard 8-color names.
+    // Always render in color. When the terminal can redefine its palette we use
+    // the exact brand colors; otherwise we fall back to the standard 8 ANSI
+    // color names, which every color terminal (xterm, MSYS2/Windows, the Linux
+    // console) supports. Bold brightens them on 8/16-color terminals.
     truecolor_available = can_change_color() && COLORS >= 256;
 
     constexpr short kBrandLight = 16;
