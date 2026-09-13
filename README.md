@@ -83,7 +83,7 @@ skip it, or set `QEVORYX_NO_SPLASH=1` to disable it.
 * Esc cancels the current edit
 * P pauses or resumes the runtime
 * S saves your settings
-* D restores the safe defaults
+* R restores the safe defaults
 * Q quits
 * Ctrl+C also quits
 

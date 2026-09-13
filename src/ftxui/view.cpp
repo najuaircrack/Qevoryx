@@ -281,6 +281,11 @@ inline Element footer(const ApplicationSnapshot& snapshot, const TuiState& state
         return hbox({text(" "), segment("Enter", "Save"), segment("Esc", "Cancel"),
                      segment("Chars", "Edit value")}) | color(theme::Border());
     }
+    if (state.focus_panel == FocusPanel::Configuration && state.selected_config_row == 6) {
+        return hbox({text(" "), segment("↑↓", "Move"), segment("←→", "Switch interface"),
+                     segment("Tab", "Panel"), segment("L", "Launch"), segment("S", "Save"),
+                     segment("Q", "Quit")}) | color(theme::Border());
+    }
     if (snapshot.running) {
         return hbox({text(" "), segment("↑↓", "Move/Select"), segment("P", "Pause/Resume"),
                      segment("X", "Stop"), segment("Tab", "Panel"), segment("?", "Help"),
