@@ -250,22 +250,20 @@ void next_panel(ui::TuiState& state, bool reverse) {
     int panel = 0;
     switch (state.focus_panel) {
         case ui::FocusPanel::Configuration: panel = 0; break;
-        case ui::FocusPanel::Interfaces: panel = 1; break;
-        case ui::FocusPanel::Actions: panel = 2; break;
-        case ui::FocusPanel::EventLog: panel = 3; break;
+        case ui::FocusPanel::Actions: panel = 1; break;
+        case ui::FocusPanel::EventLog: panel = 2; break;
         default: panel = 0; break;
     }
-    panel = reverse ? (panel + 3) % 4 : (panel + 1) % 4;
+    panel = reverse ? (panel + 2) % 3 : (panel + 1) % 3;
     state.focus_panel = panel == 0 ? ui::FocusPanel::Configuration
-                        : panel == 1 ? ui::FocusPanel::Interfaces
-                        : panel == 2 ? ui::FocusPanel::Actions
+                        : panel == 1 ? ui::FocusPanel::Actions
                                      : ui::FocusPanel::EventLog;
 }
 
 void start_edit(const ui::ApplicationSnapshot& snapshot, ui::TuiState& state) {
     if (state.focus_panel != ui::FocusPanel::Configuration) return;
     if (state.selected_config_row == 6) {
-        state.focus_panel = ui::FocusPanel::Interfaces;
+        state.error_message.clear();
         return;
     }
     state.edit_row = state.selected_config_row;
@@ -372,7 +370,7 @@ bool handle_modal_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
         if (state.show_launch_confirmation) {
             if (state.confirm_buffer == "YES") {
                 controller.launch(snapshot.config);
-                snapshot = controller.snapshot();
+                refresh_runtime(snapshot, controller.snapshot());
                 close_modal(state);
             } else state.error_message = "Type YES exactly to confirm launch.";
         } else if (state.show_reset_confirmation) {
@@ -497,11 +495,6 @@ int run(int argc, char** argv) {
                 return handle_modal_event(snapshot, state, *controller, event);
 
             if (event == Event::Escape) {
-                if (state.focus_panel == ui::FocusPanel::Interfaces) {
-                    state.focus_panel = ui::FocusPanel::Configuration;
-                    state.selected_config_row = 6;
-                    return true;
-                }
                 state.show_help = false;
                 state.error_message.clear();
                 return true;
@@ -513,8 +506,6 @@ int run(int argc, char** argv) {
             if (event == Event::ArrowDown) {
                 if (state.focus_panel == ui::FocusPanel::Configuration)
                     state.selected_config_row = (state.selected_config_row + 1) % view::config_row_count;
-                else if (state.focus_panel == ui::FocusPanel::Interfaces)
-                    adjust_interface(snapshot, 1);
                 else if (state.focus_panel == ui::FocusPanel::Actions)
                     state.selected_action = (state.selected_action + 1) % view::action_count;
                 else if (state.event_log_offset + view::visible_log_rows < snapshot.events.size())
@@ -526,8 +517,6 @@ int run(int argc, char** argv) {
                     state.selected_config_row =
                         (state.selected_config_row + view::config_row_count - 1) %
                         view::config_row_count;
-                else if (state.focus_panel == ui::FocusPanel::Interfaces)
-                    adjust_interface(snapshot, -1);
                 else if (state.focus_panel == ui::FocusPanel::Actions)
                     state.selected_action = (state.selected_action + view::action_count - 1) %
                                             view::action_count;
@@ -538,30 +527,21 @@ int run(int argc, char** argv) {
                 if (state.focus_panel == ui::FocusPanel::Configuration)
                     adjust_config(snapshot, state.selected_config_row,
                                   event == Event::ArrowRight ? 1 : -1);
-                else if (state.focus_panel == ui::FocusPanel::Interfaces)
-                    adjust_interface(snapshot, event == Event::ArrowRight ? 1 : -1);
                 return true;
             }
             if (event == Event::Character(' ')) {
                 if (state.focus_panel == ui::FocusPanel::Configuration)
                     adjust_config(snapshot, state.selected_config_row, 1);
-                else if (state.focus_panel == ui::FocusPanel::Interfaces)
-                    adjust_interface(snapshot, 1);
                 return true;
             }
             if (event == Event::Return) {
                 if (state.focus_panel == ui::FocusPanel::Configuration) start_edit(snapshot, state);
-                else if (state.focus_panel == ui::FocusPanel::Interfaces) {
-                    state.focus_panel = ui::FocusPanel::Configuration;
-                    state.selected_config_row = 6;
-                    return true;
-                }
                 else if (state.focus_panel == ui::FocusPanel::Actions) {
                     if (!activate_action(snapshot, state, *controller)) {
                         screen.Exit();
                         return true;
                     }
-                    snapshot = controller->snapshot();
+                    refresh_runtime(snapshot, controller->snapshot());
                 }
                 return true;
             }
@@ -576,7 +556,7 @@ int run(int argc, char** argv) {
             if (event == Event::Character('p') || event == Event::Character('P')) {
                 if (snapshot.running && snapshot.paused) controller->resume();
                 else if (snapshot.running) controller->pause();
-                snapshot = controller->snapshot();
+                refresh_runtime(snapshot, controller->snapshot());
                 return true;
             }
             if (event == Event::Character('r') || event == Event::Character('R')) {
@@ -586,12 +566,12 @@ int run(int argc, char** argv) {
             if (event == Event::Character('s') || event == Event::Character('S')) {
                 if (valid_config(snapshot)) controller->save(snapshot.config);
                 else state.error_message = "Cannot save an invalid configuration.";
-                snapshot = controller->snapshot();
+                refresh_runtime(snapshot, controller->snapshot());
                 return true;
             }
             if (event == Event::Character('x') || event == Event::Character('X')) {
                 controller->stop();
-                snapshot = controller->snapshot();
+                refresh_runtime(snapshot, controller->snapshot());
                 return true;
             }
             return false;

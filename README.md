@@ -75,10 +75,9 @@ skip it, or set `QEVORYX_NO_SPLASH=1` to disable it.
 ## Panel controls
 
 * Arrow keys move through fields and actions
-* Tab moves focus through configuration, interfaces, actions, and the event log
+* Tab moves focus through configuration, actions, and the event log
 * Enter starts editing a field or activates the selected action
-* Enter on the Interface row opens the detected IPv4 adapter list
-* Up and Down choose an adapter; Enter confirms and Escape returns
+* Select the Interface row and use Left or Right to switch detected IPv4 adapters
 * Left and Right change a choice or adjust a number
 * Space selects the next choice
 * Esc cancels the current edit
@@ -88,7 +87,7 @@ skip it, or set `QEVORYX_NO_SPLASH=1` to disable it.
 * Q quits
 * Ctrl+C also quits
 
-The panel is built with FTXUI. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly. The interface picker lists active IPv4 adapters, prefers the adapter with the default route, and shows each adapter's address. When the event log has focus, the arrow keys scroll through older events.
+The panel is built with FTXUI. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly. Configuration changes remain in the UI while actions update runtime state, preventing launch, stop, pause, help, and log actions from restoring old values. The Interface row cycles through active IPv4 adapters and prefers the adapter with the default route. When the event log has focus, the arrow keys scroll through older events.
 
 ## Screens
 

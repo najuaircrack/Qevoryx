@@ -18,7 +18,6 @@ enum class TuiScreen {
 
 enum class FocusPanel {
     Configuration,
-    Interfaces,
     Actions,
     Status,
     EventLog
