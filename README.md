@@ -56,6 +56,17 @@ For a static binary, use:
 make static
 ```
 
+### FTXUI frontend
+
+The repository also includes an FTXUI control panel that is wired to the same backend controller:
+
+```bash
+cmake -S ftxui-tui -B ftxui-tui/build
+cmake --build ftxui-tui/build --config Release
+```
+
+Run the resulting `qevoryx_tui` executable. It supports the same configuration fields and backend actions as the ncursesw panel, including typed launch confirmation, live counters, pause/resume, stop, save/reset, event-log scrolling, and help.
+
 ## Start the panel
 
 Run Qevoryx without arguments:
