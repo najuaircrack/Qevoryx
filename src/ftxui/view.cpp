@@ -2,6 +2,7 @@
 
 #include <ftxui/dom/elements.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -61,14 +62,14 @@ inline int interface_index(const ApplicationSnapshot& snapshot) {
             return static_cast<int>(index);
         }
     }
-    return 0;
+    return -1;
 }
 
 inline std::string interface_display(const ApplicationSnapshot& snapshot) {
     if (snapshot.interfaces.empty()) return "No IPv4 interfaces";
     const int index = interface_index(snapshot);
-    return snapshot.interfaces[static_cast<std::size_t>(index)].name + "  " +
-           snapshot.interfaces[static_cast<std::size_t>(index)].address;
+    if (index < 0) return snapshot.config.real_ip_interface + " (unavailable)";
+    return snapshot.interfaces[static_cast<std::size_t>(index)].name;
 }
 
 std::vector<std::string> config_values(const config::Config& config) {
@@ -132,11 +133,16 @@ inline Element config_panel(const ApplicationSnapshot& snapshot, const TuiState&
         "Target IP", "Target Port", "Traffic Profile", "Workers",
         "Rate Limit", "Source Mode", "Interface", "Payload Min", "Payload Max",
     };
-    const std::vector<std::string> descriptions = {
+    std::vector<std::string> descriptions = {
         "Destination IPv4 address", "Destination port", "Packet profile token",
         "Worker threads", "Packets per second, 0 disables", "Source address selection",
         "Network interface", "UDP payload lower bound", "UDP payload upper bound",
     };
+    const int selected_interface = interface_index(snapshot);
+    descriptions[6] = selected_interface < 0
+                          ? "Enter to choose a detected IPv4 interface"
+                          : snapshot.interfaces[static_cast<std::size_t>(selected_interface)].address +
+                                "  Enter to choose";
     Elements rows;
     for (int index = 0; index < config_row_count; ++index) {
         const bool selected = state.focus_panel == FocusPanel::Configuration &&
@@ -183,6 +189,8 @@ inline Element interface_panel(const ApplicationSnapshot& snapshot, const TuiSta
                 text("  "),
                 text(interface.address) |
                     color(current ? theme::Primary() : theme::Muted()),
+                text(interface.default_route ? "  default" : "") |
+                    color(theme::Success()),
                 filler(),
             });
             if (current) row = row | bgcolor(theme::SelectionBg());
@@ -190,10 +198,10 @@ inline Element interface_panel(const ApplicationSnapshot& snapshot, const TuiSta
         }
     }
 
-    auto body = vbox(std::move(rows)) | focusPosition(0, interface_index(snapshot));
+    auto body = vbox(std::move(rows)) |
+                focusPosition(0, std::max(0, interface_index(snapshot)));
     return panel("INTERFACES", yframe(std::move(body)) | vscroll_indicator,
-                 state.focus_panel == FocusPanel::Interfaces) |
-           size(WIDTH, EQUAL, 32);
+                 state.focus_panel == FocusPanel::Interfaces);
 }
 
 inline std::vector<std::string> action_labels(const ApplicationSnapshot& snapshot) {
@@ -306,6 +314,11 @@ inline Element footer(const ApplicationSnapshot& snapshot, const TuiState& state
         return hbox({text(" "), segment("Enter", "Save"), segment("Esc", "Cancel"),
                      segment("Chars", "Edit value")}) | color(theme::Border());
     }
+    if (state.focus_panel == FocusPanel::Interfaces) {
+        return hbox({text(" "), segment("↑↓", "Choose interface"),
+                     segment("Enter/Esc", "Back"), segment("Tab", "Next panel"),
+                     segment("Q", "Quit")}) | color(theme::Border());
+    }
     if (snapshot.running) {
         return hbox({text(" "), segment("↑↓", "Move/Select"), segment("P", "Pause/Resume"),
                      segment("X", "Stop"), segment("Tab", "Panel"), segment("?", "Help"),
@@ -329,6 +342,7 @@ inline Element help_screen() {
         line("Left/Right", "Cycle choices or adjust numeric values"),
         line("Space", "Cycle to the next choice"),
         line("Enter", "Edit a field or activate an action"),
+        line("Interface", "Enter on the Interface row to choose a detected IPv4 adapter"),
         line("Tab", "Move focus between panels"),
         line("L", "Open the typed launch confirmation"),
         line("P", "Pause or resume a running test"),
@@ -427,18 +441,12 @@ inline Element compact_event(const ApplicationSnapshot& snapshot, const TuiState
 
 inline Element main_screen(const ApplicationSnapshot& snapshot, const TuiState& state,
                            int width, int height) {
-    Element body;
-    if (width >= 140) {
-        body = hbox({config_panel(snapshot, state, width), text(" "),
-                     interface_panel(snapshot, state), text(" "),
-                     actions_panel(snapshot, state)}) | flex;
-    } else {
-        body = vbox({
-            hbox({config_panel(snapshot, state, width), text(" "),
-                  actions_panel(snapshot, state)}) | flex,
-            interface_panel(snapshot, state),
-        }) | flex;
-    }
+    Element side_panel = state.focus_panel == FocusPanel::Interfaces
+                             ? interface_panel(snapshot, state) |
+                                   size(WIDTH, EQUAL, width >= 100 ? 38 : 30)
+                             : actions_panel(snapshot, state);
+    auto body = hbox({config_panel(snapshot, state, width), text(" "),
+                      std::move(side_panel)}) | flex;
     if (height < 12)
         return vbox({compact_header(snapshot), body}) | bgcolor(theme::Bg());
     if (height < 16)

@@ -1,6 +1,7 @@
 #include "app/application.hpp"
 #include "app/thread_affinity.hpp"
 #include "common/constants.hpp"
+#include "common/network_interfaces.hpp"
 #include "common/types.hpp"
 #include "common/platform.hpp"
 #include "config/config.hpp"
@@ -104,87 +105,17 @@ void generate_spoof_ips() {
     std::cout << "  Total spoof IPs: " << count << " (padded to " << pow2 << ")" << std::endl;
 }
 
-#if QEVORYX_PLATFORM_LINUX
-// Get real IP from network interface (Linux only)
 std::uint32_t get_real_ip(const std::string& interface_name) {
-    struct ifaddrs* ifaddr = nullptr;
-    std::uint32_t result = 0;
+    for (const auto& interface : common::list_network_interfaces()) {
+        if (interface.name != interface_name) continue;
 
-    if (getifaddrs(&ifaddr) == -1) return 0;
-
-    for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == nullptr) continue;
-        if (ifa->ifa_addr->sa_family != AF_INET) continue;
-        if (ifa->ifa_name != interface_name) continue;
-
-        auto* sa = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
-        result = sa->sin_addr.s_addr;
-        break;
+        struct in_addr address {};
+        if (inet_pton(AF_INET, interface.address.c_str(), &address) == 1) {
+            return address.s_addr;
+        }
     }
-
-    freeifaddrs(ifaddr);
-    return result;
+    return 0;
 }
-#else
-// Windows: real IP detection via GetAdaptersAddresses
-std::uint32_t get_real_ip(const std::string& interface_name) {
-    ULONG buf_size = 15000;
-    IP_ADAPTER_ADDRESSES* adapters = nullptr;
-    DWORD result = ERROR_BUFFER_OVERFLOW;
-
-    for (int attempt = 0; attempt < 4 && result == ERROR_BUFFER_OVERFLOW; ++attempt) {
-        adapters = static_cast<IP_ADAPTER_ADDRESSES*>(std::malloc(buf_size));
-        if (!adapters) {
-            return 0;
-        }
-
-        result = GetAdaptersAddresses(AF_INET,
-                                      GAA_FLAG_SKIP_ANYCAST |
-                                      GAA_FLAG_SKIP_MULTICAST |
-                                      GAA_FLAG_SKIP_DNS_SERVER,
-                                      nullptr,
-                                      adapters,
-                                      &buf_size);
-        if (result == ERROR_BUFFER_OVERFLOW) {
-            std::free(adapters);
-            adapters = nullptr;
-        }
-    }
-
-    if (result != NO_ERROR) {
-        std::free(adapters);
-        return 0;
-    }
-
-    std::uint32_t ip = 0;
-    for (auto* adapter = adapters; adapter != nullptr; adapter = adapter->Next) {
-        // Convert FriendlyName (wchar_t*) to std::string for comparison
-        std::string friendly;
-        if (adapter->FriendlyName) {
-            int len = WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, nullptr, 0, nullptr, nullptr);
-            if (len > 0) {
-                friendly.resize(len - 1);
-                WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, friendly.data(), len, nullptr, nullptr);
-            }
-        }
-
-        // Match by FriendlyName only (AdapterName is a GUID, not useful)
-        if (friendly == interface_name) {
-            for (auto* ua = adapter->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
-                if (ua->Address.lpSockaddr->sa_family == AF_INET) {
-                    auto* sa = reinterpret_cast<struct sockaddr_in*>(ua->Address.lpSockaddr);
-                    ip = sa->sin_addr.s_addr;
-                    break;
-                }
-            }
-            if (ip != 0) break;
-        }
-    }
-
-    std::free(adapters);
-    return ip;
-}
-#endif
 
 } // anonymous namespace
 

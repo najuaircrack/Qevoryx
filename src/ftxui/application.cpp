@@ -24,6 +24,7 @@
 
 #include "app/application_controller.hpp"
 #include "common/constants.hpp"
+#include "common/network_interfaces.hpp"
 #include "common/platform.hpp"
 #include "config/config.hpp"
 #include "config/settings_store.hpp"
@@ -49,8 +50,8 @@ bool valid_config(const ui::ApplicationSnapshot& snapshot) {
     if (config.target_port == 0 || config.worker_count == 0 ||
         config.worker_count > static_cast<std::uint32_t>(common::MAX_THREADS)) return false;
     if (config.payload_min > config.payload_max || config.payload_max > 1472) return false;
-    if (config.real_ip_interface.empty()) return false;
-    if (config.use_spoof_ips || snapshot.interfaces.empty()) return true;
+    if (config.use_spoof_ips) return true;
+    if (config.real_ip_interface.empty() || snapshot.interfaces.empty()) return false;
     return std::any_of(snapshot.interfaces.begin(), snapshot.interfaces.end(),
                        [&config](const common::NetworkInterface& interface) {
                            return interface.name == config.real_ip_interface;
@@ -92,13 +93,16 @@ int interface_index(const ui::ApplicationSnapshot& snapshot) {
             return static_cast<int>(index);
         }
     }
-    return 0;
+    return -1;
 }
 
 void adjust_interface(ui::ApplicationSnapshot& snapshot, int direction) {
     if (snapshot.interfaces.empty()) return;
     const int count = static_cast<int>(snapshot.interfaces.size());
-    const int index = (interface_index(snapshot) + direction + count) % count;
+    const int current = interface_index(snapshot);
+    const int index = current < 0
+                          ? (direction < 0 ? count - 1 : 0)
+                          : (current + direction + count) % count;
     snapshot.config.real_ip_interface =
         snapshot.interfaces[static_cast<std::size_t>(index)].name;
 }
@@ -368,11 +372,13 @@ bool handle_modal_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
         if (state.show_launch_confirmation) {
             if (state.confirm_buffer == "YES") {
                 controller.launch(snapshot.config);
+                snapshot = controller.snapshot();
                 close_modal(state);
             } else state.error_message = "Type YES exactly to confirm launch.";
         } else if (state.show_reset_confirmation) {
             if (state.confirm_buffer == "RESET") {
                 controller.reset();
+                snapshot = controller.snapshot();
                 close_modal(state);
             } else state.error_message = "Type RESET exactly to confirm.";
         }
@@ -384,6 +390,10 @@ bool handle_modal_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
 int snapshot_main(int width, int height) {
     ui::ApplicationSnapshot snapshot;
     snapshot.config = config::SettingsStore::defaults();
+    snapshot.interfaces = common::list_network_interfaces();
+    if (!snapshot.interfaces.empty()) {
+        snapshot.config.real_ip_interface = snapshot.interfaces.front().name;
+    }
     snapshot.settings_path = config::SettingsStore::settings_path();
     snapshot.events.push_back({"00:00:00", ui::Severity::Info, "Snapshot mode"});
     ui::TuiState state;
@@ -487,6 +497,11 @@ int run(int argc, char** argv) {
                 return handle_modal_event(snapshot, state, *controller, event);
 
             if (event == Event::Escape) {
+                if (state.focus_panel == ui::FocusPanel::Interfaces) {
+                    state.focus_panel = ui::FocusPanel::Configuration;
+                    state.selected_config_row = 6;
+                    return true;
+                }
                 state.show_help = false;
                 state.error_message.clear();
                 return true;
@@ -537,6 +552,8 @@ int run(int argc, char** argv) {
             if (event == Event::Return) {
                 if (state.focus_panel == ui::FocusPanel::Configuration) start_edit(snapshot, state);
                 else if (state.focus_panel == ui::FocusPanel::Interfaces) {
+                    state.focus_panel = ui::FocusPanel::Configuration;
+                    state.selected_config_row = 6;
                     return true;
                 }
                 else if (state.focus_panel == ui::FocusPanel::Actions) {
