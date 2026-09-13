@@ -52,9 +52,6 @@ struct ApplicationSnapshot {
     std::vector<UiEventLogEntry> events;
 };
 
-const char* severity_label(Severity severity);
-const char* state_label(const ApplicationSnapshot& snapshot);
-
 struct TuiState {
     TuiScreen screen{TuiScreen::Main};
     FocusPanel focus_panel{FocusPanel::Configuration};

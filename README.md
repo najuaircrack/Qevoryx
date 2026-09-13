@@ -4,13 +4,13 @@
 
 # Qevoryx
 
-Qevoryx is a packet generator for careful network testing in places where you have permission to work. It opens as a polished ncursesw control panel, keeps your settings between runs, and gives you clear feedback while it runs.
+Qevoryx is a packet generator for careful network testing in places where you have permission to work. It opens as a polished FTXUI control panel, keeps your settings between runs, and gives you clear feedback while it runs.
 
 The command line is still there when you need it, but the panel is now the main way to use Qevoryx.
 
 ## What you get
 
-* A component based ncursesw control panel
+* A component based FTXUI control panel
 * A responsive layout that adapts to terminal width and height
 * Separate panels for configuration, actions, status, and the event log
 * A colored splash of the Qevoryx logo on start, and a compact emblem in the header
@@ -26,19 +26,15 @@ The command line is still there when you need it, but the panel is now the main 
 
 ## Requirements
 
-Linux is the primary platform. You need root privileges, a C++17 compiler, pthread support, and ncursesw with panel support. Windows binaries are built with MSYS2 MinGW64 and use the same ncursesw interface.
+Qevoryx builds on Linux, macOS, and Windows. You need a C++17 compiler, CMake 3.20 or newer, and pthread support. FTXUI is fetched automatically by CMake.
 
-On Debian or Ubuntu, install the development package with:
-
-```bash
-sudo apt install libncursesw5-dev
-```
-
-On Windows, install the ncurses package in an MSYS2 MinGW64 shell:
+On Debian or Ubuntu, install the build tools with:
 
 ```bash
-pacman -S mingw-w64-x86_64-ncurses
+sudo apt install build-essential cmake
 ```
+
+On Windows, use Visual Studio 2022 or newer with the C++ and CMake workloads.
 
 Run Qevoryx from an elevated terminal when the tool needs raw socket access.
 
@@ -50,22 +46,14 @@ Use a terminal that can show UTF-8 characters. Qevoryx falls back to simpler arr
 make
 ```
 
-For a static binary, use:
+Or configure and build directly with CMake:
 
 ```bash
-make static
+cmake -S . -B build
+cmake --build build --config Release
 ```
 
-### FTXUI frontend
-
-The repository also includes an FTXUI control panel that is wired to the same backend controller:
-
-```bash
-cmake -S ftxui-tui -B ftxui-tui/build
-cmake --build ftxui-tui/build --config Release
-```
-
-Run the resulting `qevoryx_tui` executable. It supports the same configuration fields and backend actions as the ncursesw panel, including typed launch confirmation, live counters, pause/resume, stop, save/reset, event-log scrolling, and help.
+The resulting `qevoryx` executable is the FTXUI frontend. It supports the same configuration fields and backend actions as before, including typed launch confirmation, live counters, pause/resume, stop, save/reset, event-log scrolling, and help.
 
 ## Start the panel
 
@@ -98,7 +86,7 @@ skip it, or set `QEVORYX_NO_SPLASH=1` to disable it.
 * Q quits
 * Ctrl+C also quits
 
-The panel uses ncursesw windows and panels internally. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly. When the event log has focus, the arrow keys scroll through older events.
+The panel is built with FTXUI. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly. When the event log has focus, the arrow keys scroll through older events.
 
 ## Screens
 

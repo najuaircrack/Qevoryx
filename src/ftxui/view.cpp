@@ -1,4 +1,4 @@
-#pragma once
+#include "view.hpp"
 
 #include <ftxui/dom/elements.hpp>
 
@@ -9,18 +9,18 @@
 #include "config/config.hpp"
 #include "logo.hpp"
 #include "theme.hpp"
-#include "ui/tui_state.hpp"
+#include "ftxui/state.hpp"
 
-namespace ui {
+namespace qevoryx::frontend {
 using namespace ftxui;
 
-namespace ftxui_view {
+using ui::ApplicationSnapshot;
+using ui::FocusPanel;
+using ui::InputMode;
+using ui::Severity;
+using ui::TuiState;
 
-constexpr int config_row_count = 9;
-constexpr int action_count = 8;
-constexpr std::size_t visible_log_rows = 5;
-
-inline const char* profile_value(config::PacketMode mode) {
+const char* profile_value(config::PacketMode mode) {
     switch (mode) {
         case config::PacketMode::Mixed: return "mixed";
         case config::PacketMode::Tcp: return "tcp_syn";
@@ -54,7 +54,7 @@ inline const char* source_label(bool spoofed) {
     return spoofed ? "Spoofed" : "Real interface";
 }
 
-inline std::vector<std::string> config_values(const config::Config& config) {
+std::vector<std::string> config_values(const config::Config& config) {
     return {
         config.target_ip,
         std::to_string(config.target_port),
@@ -75,8 +75,10 @@ inline Element panel(const std::string& title, Element body, bool focused) {
 }
 
 inline Element header(const ApplicationSnapshot& snapshot, int width) {
-    const auto& art = width >= 110 ? logo::Emblem16
-                      : width >= 90  ? logo::Emblem12
+    const auto& art = width >= 150 ? logo::Emblem24
+                      : width >= 105 ? logo::Emblem20
+                      : width >= 88  ? logo::Emblem16
+                      : width >= 76  ? logo::Emblem12
                                      : logo::Emblem8;
     const std::string settings = snapshot.settings_path.empty()
                                      ? std::string("Settings path unavailable")
@@ -311,7 +313,7 @@ inline Element main_screen(const ApplicationSnapshot& snapshot, const TuiState& 
            bgcolor(theme::Bg());
 }
 
-inline Element render(const ApplicationSnapshot& snapshot, const TuiState& state, int width) {
+Element render(const ApplicationSnapshot& snapshot, const TuiState& state, int width) {
     if (state.show_help) return help_screen() | bgcolor(theme::Bg());
     Element screen = main_screen(snapshot, state, width);
     if (state.show_launch_confirmation) {
@@ -326,5 +328,4 @@ inline Element render(const ApplicationSnapshot& snapshot, const TuiState& state
     return screen;
 }
 
-} // namespace ftxui_view
-} // namespace ui
+} // namespace qevoryx::frontend

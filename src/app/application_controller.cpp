@@ -19,7 +19,7 @@
 namespace app {
 namespace {
 
-class BackendApplicationController final : public ui::ApplicationController {
+class BackendApplicationController final : public app::ApplicationController {
 public:
     explicit BackendApplicationController(config::Config config)
         : config_(std::move(config)) {
@@ -177,7 +177,7 @@ private:
 
 } // namespace
 
-std::unique_ptr<ui::ApplicationController> create_application_controller(config::Config config) {
+std::unique_ptr<ApplicationController> create_application_controller(config::Config config) {
     return std::make_unique<BackendApplicationController>(std::move(config));
 }
 

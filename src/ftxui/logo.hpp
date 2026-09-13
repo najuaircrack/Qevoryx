@@ -9,6 +9,7 @@ inline ftxui::Element render_emblem(const std::vector<std::vector<logo::EmblemCe
   auto tone = [](logo::Tone t) {
     switch (t) { case logo::L: return theme::BrandWhite();
                  case logo::R: return theme::BrandRed();
+                 case logo::D: return theme::BrandShadow();
                  default: return theme::Bg(); }
   };
   Elements rows;

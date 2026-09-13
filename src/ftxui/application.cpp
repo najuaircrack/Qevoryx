@@ -1,4 +1,4 @@
-#include "ui.hpp"
+#include "view.hpp"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
@@ -25,12 +25,12 @@
 #include "common/platform.hpp"
 #include "config/config.hpp"
 #include "config/settings_store.hpp"
-#include "ui/tui_state.hpp"
+#include "ftxui/state.hpp"
 
 using namespace ftxui;
 
 namespace {
-namespace view = ui::ftxui_view;
+namespace view = qevoryx::frontend;
 
 std::optional<std::uint32_t> parse_u32(const std::string& value) {
     if (value.empty()) return std::nullopt;
@@ -201,6 +201,17 @@ bool commit_edit(ui::ApplicationSnapshot& snapshot, ui::TuiState& state) {
     return true;
 }
 
+void refresh_runtime(ui::ApplicationSnapshot& snapshot,
+                     const ui::ApplicationSnapshot& latest) {
+    snapshot.running = latest.running;
+    snapshot.paused = latest.paused;
+    snapshot.ready = latest.ready;
+    snapshot.generated = latest.generated;
+    snapshot.errors = latest.errors;
+    snapshot.settings_path = latest.settings_path;
+    snapshot.events = latest.events;
+}
+
 void next_panel(ui::TuiState& state, bool reverse) {
     int panel = 0;
     switch (state.focus_panel) {
@@ -250,7 +261,7 @@ void close_modal(ui::TuiState& state) {
 }
 
 bool activate_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
-                     ui::ApplicationController& controller) {
+                     app::ApplicationController& controller) {
     switch (state.selected_action) {
         case 0:
             if (!snapshot.running && valid_config(snapshot.config)) open_launch_confirmation(state);
@@ -302,7 +313,7 @@ bool handle_edit_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state, c
 }
 
 bool handle_modal_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
-                        ui::ApplicationController& controller, const Event& event) {
+                        app::ApplicationController& controller, const Event& event) {
     if (event == Event::Escape) {
         close_modal(state);
         return true;
@@ -341,7 +352,7 @@ int snapshot_main(int width, int height) {
     snapshot.events.push_back({"00:00:00", ui::Severity::Info, "Snapshot mode"});
     ui::TuiState state;
     state.focus_panel = ui::FocusPanel::Configuration;
-    auto document = ui::ftxui_view::render(snapshot, state, width);
+    auto document = qevoryx::frontend::render(snapshot, state, width);
     auto screen = Screen::Create(Dimension::Fixed(width), Dimension::Fixed(height));
     Render(screen, document);
     std::cout << screen.ToString();
@@ -350,7 +361,9 @@ int snapshot_main(int width, int height) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+namespace qevoryx::frontend {
+
+int run(int argc, char** argv) {
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--help") == 0) {
             std::cout << "Usage: qevoryx_tui [--snapshot WIDTH HEIGHT]\n";
@@ -384,12 +397,12 @@ int main(int argc, char** argv) {
 
         auto screen = ScreenInteractive::Fullscreen();
         auto component = Renderer([&] {
-            return ui::ftxui_view::render(snapshot, state, Terminal::Size().dimx);
+            return qevoryx::frontend::render(snapshot, state, Terminal::Size().dimx);
         });
 
         component |= CatchEvent([&](Event event) {
             if (event == Event::Custom) {
-                snapshot = controller->snapshot();
+                refresh_runtime(snapshot, controller->snapshot());
                 return true;
             }
             if (event == Event::CtrlC || event == Event::Character('q') ||
@@ -508,3 +521,5 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+
+} // namespace qevoryx::frontend

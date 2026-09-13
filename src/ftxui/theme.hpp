@@ -9,6 +9,7 @@ using ftxui::Color;
 
 inline Color BrandWhite() { return Color::RGB(243, 243, 246); }
 inline Color BrandRed()   { return Color::RGB(226, 32, 42); }
+inline Color BrandShadow(){ return Color::RGB(132, 142, 158); }
 inline Color Accent()     { return Color::RGB(56, 196, 222); }
 inline Color Primary()    { return Color::RGB(243, 243, 246); }
 inline Color Secondary()  { return Color::RGB(178, 184, 196); }

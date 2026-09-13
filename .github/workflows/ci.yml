@@ -17,31 +17,24 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y g++ make pkg-config libncursesw5-dev libtinfo-dev
+        run: sudo apt-get update && sudo apt-get install -y g++ cmake
 
-      - name: Build dynamic
-        run: make
+      - name: Configure
+        run: cmake -S . -B build
 
-      - name: Build static
-        run: make static
+      - name: Build
+        run: cmake --build build --config Release
 
       - name: Smoke test
         run: |
-          ./qevoryx --help
-          ./qevoryx --version
-
-      - name: Verify
-        run: |
-          file qevoryx
-          file qevoryx-static
+          ./build/qevoryx --help
+          ./build/qevoryx --version
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: qevoryx-linux-amd64
-          path: |
-            qevoryx
-            qevoryx-static
+          path: build/qevoryx
 
   build-windows:
     runs-on: windows-latest
@@ -49,42 +42,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: mingw-w64-x86_64-gcc make mingw-w64-x86_64-ncurses
+      - name: Configure
+        run: cmake -S . -B build
 
-      - name: Build dynamic
-        shell: msys2 {0}
-        run: make
-
-      - name: Build static
-        shell: msys2 {0}
-        run: make static
+      - name: Build
+        run: cmake --build build --config Release
 
       - name: Smoke test
-        shell: msys2 {0}
         run: |
-          ./qevoryx.exe --help
-          ./qevoryx.exe --version
-          ./qevoryx-static.exe --version
-
-      - name: Verify
-        shell: msys2 {0}
-        run: |
-          file qevoryx.exe
-          file qevoryx-static.exe
-          if ldd qevoryx-static.exe | grep -q mingw64; then
-            echo "Static binary still depends on MinGW runtime libraries"
-            ldd qevoryx-static.exe
-            exit 1
-          fi
+          ./build/Release/qevoryx.exe --help
+          ./build/Release/qevoryx.exe --version
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: qevoryx-windows-amd64
-          path: |
-            qevoryx-static.exe
+          path: build/Release/qevoryx.exe

@@ -18,33 +18,24 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y g++ make pkg-config libncursesw5-dev libtinfo-dev
+        run: sudo apt-get update && sudo apt-get install -y g++ cmake
 
-      - name: Build dynamic
-        run: make
+      - name: Configure
+        run: cmake -S . -B build
 
-      - name: Build static
-        run: make static
+      - name: Build
+        run: cmake --build build --config Release
 
-      - name: Verify
-        run: |
-          file qevoryx
-          file qevoryx-static
-
-      - name: Generate checksums
-        run: |
-          sha256sum qevoryx > qevoryx-linux-amd64.sha256
-          sha256sum qevoryx-static > qevoryx-linux-amd64-static.sha256
+      - name: Generate checksum
+        run: sha256sum build/qevoryx > qevoryx-linux-amd64.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-amd64
           path: |
-            qevoryx
-            qevoryx-static
+            build/qevoryx
             qevoryx-linux-amd64.sha256
-            qevoryx-linux-amd64-static.sha256
 
   build-windows:
     runs-on: windows-latest
@@ -54,48 +45,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: mingw-w64-x86_64-gcc make mingw-w64-x86_64-ncurses
+      - name: Configure
+        run: cmake -S . -B build
 
-      - name: Build dynamic
-        shell: msys2 {0}
-        run: make
-
-      - name: Build static
-        shell: msys2 {0}
-        run: make static
-
-      - name: Smoke test
-        shell: msys2 {0}
-        run: ./qevoryx-static.exe --version
-
-      - name: Verify static linkage
-        shell: msys2 {0}
-        run: |
-          if ldd qevoryx-static.exe | grep -q mingw64; then
-            echo "Static binary still depends on MinGW runtime libraries"
-            ldd qevoryx-static.exe
-            exit 1
-          fi
-
-      - name: Verify
-        shell: msys2 {0}
-        run: file qevoryx-static.exe
+      - name: Build
+        run: cmake --build build --config Release
 
       - name: Generate checksum
-        shell: msys2 {0}
-        run: sha256sum qevoryx-static.exe > qevoryx-windows-amd64.exe.sha256
+        shell: pwsh
+        run: Get-FileHash build/Release/qevoryx.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  qevoryx-windows-amd64.exe" } | Out-File qevoryx-windows-amd64.exe.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-amd64
           path: |
-            qevoryx-static.exe
+            build/Release/qevoryx.exe
             qevoryx-windows-amd64.exe.sha256
 
   release:
@@ -114,12 +79,10 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/linux-amd64/qevoryx release/qevoryx-linux-amd64
-          cp artifacts/linux-amd64/qevoryx-static release/qevoryx-linux-amd64-static
           cp artifacts/linux-amd64/qevoryx-linux-amd64.sha256 release/
-          cp artifacts/linux-amd64/qevoryx-linux-amd64-static.sha256 release/
-          cp artifacts/windows-amd64/qevoryx-static.exe release/qevoryx-windows-amd64.exe
+          cp artifacts/windows-amd64/qevoryx.exe release/qevoryx-windows-amd64.exe
           cp artifacts/windows-amd64/qevoryx-windows-amd64.exe.sha256 release/
-          chmod +x release/qevoryx-linux-amd64 release/qevoryx-linux-amd64-static
+          chmod +x release/qevoryx-linux-amd64
 
       - name: Get version
         id: version
@@ -134,10 +97,8 @@ jobs:
           generate_release_notes: true
           files: |
             release/qevoryx-linux-amd64
-            release/qevoryx-linux-amd64-static
-            release/qevoryx-windows-amd64.exe
             release/qevoryx-linux-amd64.sha256
-            release/qevoryx-linux-amd64-static.sha256
+            release/qevoryx-windows-amd64.exe
             release/qevoryx-windows-amd64.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
