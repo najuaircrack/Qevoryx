@@ -33,10 +33,10 @@
     // Windows doesn't have geteuid — always 0 (admin check done differently)
     #define QEVORYX_GETEUID() 0
 
-    // Windows doesn't have raw IPPROTO_RAW in the same way
-    // Use IPPROTO_IP with IP_HDRINCL
+    // Windows doesn't define IPPROTO_RAW in older SDKs.
+    // Real value is 255 (IANA). 47 is GRE — do not use that.
     #ifndef IPPROTO_RAW
-        #define IPPROTO_RAW 47
+        #define IPPROTO_RAW 255
     #endif
 
     // inet_pton/inet_ntop available in Vista+

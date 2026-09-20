@@ -9,17 +9,13 @@ namespace {
 
 std::uint32_t checksum_sum(const std::uint8_t* data, std::size_t length) noexcept {
     std::uint32_t sum = 0;
-    std::size_t offset = 0;
 
-    while (offset + 1 < length) {
-        std::uint16_t word = 0;
-        std::memcpy(&word, data + offset, sizeof(word));
-        sum += word;
-        offset += 2;
+    for (std::size_t i = 0; i + 1 < length; i += 2) {
+        sum += (static_cast<std::uint32_t>(data[i]) << 8) | data[i + 1];
     }
 
-    if (offset < length) {
-        sum += static_cast<std::uint16_t>(data[offset] << 8);
+    if (length & 1) {
+        sum += static_cast<std::uint32_t>(data[length - 1]) << 8;
     }
 
     return sum;
@@ -40,6 +36,8 @@ std::uint16_t internet_checksum(const void* data, std::size_t length) noexcept {
 
 std::uint16_t tcp_checksum(const void* tcp_header, std::size_t tcp_length,
                            std::uint32_t src_ip, std::uint32_t dst_ip) noexcept {
+    if (tcp_length > 65535) return 0;
+
     std::array<std::uint8_t, 12> pseudo{};
     std::memcpy(pseudo.data() + 0, &src_ip, sizeof(src_ip));
     std::memcpy(pseudo.data() + 4, &dst_ip, sizeof(dst_ip));
@@ -56,6 +54,8 @@ std::uint16_t tcp_checksum(const void* tcp_header, std::size_t tcp_length,
 
 std::uint16_t udp_checksum(const void* udp_header, std::size_t udp_length,
                            std::uint32_t src_ip, std::uint32_t dst_ip) noexcept {
+    if (udp_length > 65535) return 0;
+
     std::array<std::uint8_t, 12> pseudo{};
     std::memcpy(pseudo.data() + 0, &src_ip, sizeof(src_ip));
     std::memcpy(pseudo.data() + 4, &dst_ip, sizeof(dst_ip));

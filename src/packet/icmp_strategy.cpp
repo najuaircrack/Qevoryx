@@ -51,9 +51,10 @@ bool IcmpStrategy::build(const PacketContext& ctx, common::PacketBuffer& output)
     iph->flags_fragment = 0;
     iph->ttl = ctx.rng.range(64, 255);
     iph->protocol = 1; // ICMP
-    iph->checksum = 0;
     iph->source = src_ip;
     iph->destination = dst_ip;
+    iph->checksum = 0;
+    iph->checksum = protocol::internet_checksum(reinterpret_cast<const std::uint8_t*>(iph), 20);
 
     output.size = pkt_len;
     return true;

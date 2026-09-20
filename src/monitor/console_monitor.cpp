@@ -29,6 +29,11 @@ void ConsoleMonitor::start(const config::Config& config) {
 }
 
 void ConsoleMonitor::update(const MonitorSnapshot& snapshot) {
+    if (snapshot.generated < previous_generated_) {
+        previous_generated_ = 0;
+        maximum_rate_ = 0;
+    }
+
     std::uint64_t delta = snapshot.generated - previous_generated_;
     previous_generated_ = snapshot.generated;
     if (delta > maximum_rate_) maximum_rate_ = delta;

@@ -195,52 +195,57 @@ std::optional<Config> SettingsStore::load() {
 
         const auto separator = line.find('=');
         if (separator == std::string::npos) {
-            return std::nullopt;
+            continue;
         }
 
         const std::string key = trim(line.substr(0, separator));
         const std::string value = trim(line.substr(separator + 1));
 
+        if (key.empty()) {
+            continue;
+        }
+
         if (key == "target_ip") {
+            if (value.empty()) continue;
             config.target_ip = value;
         } else if (key == "target_port") {
             const auto parsed = parse_u16(value);
-            if (!parsed || *parsed == 0) return std::nullopt;
+            if (!parsed || *parsed == 0) continue;
             config.target_port = *parsed;
         } else if (key == "worker_count") {
             const auto parsed = parse_u32(value);
             if (!parsed || *parsed == 0 || *parsed > static_cast<std::uint32_t>(common::MAX_THREADS)) {
-                return std::nullopt;
+                continue;
             }
             config.worker_count = *parsed;
         } else if (key == "packet_mode") {
             const auto parsed = mode_from_string(value);
-            if (!parsed) return std::nullopt;
+            if (!parsed) continue;
             config.packet_mode = *parsed;
         } else if (key == "monitor_mode") {
             const auto parsed = monitor_from_string(value);
-            if (!parsed) return std::nullopt;
+            if (!parsed) continue;
             config.monitor_mode = *parsed;
         } else if (key == "payload_min") {
             const auto parsed = parse_u32(value);
-            if (!parsed || *parsed > 1472) return std::nullopt;
+            if (!parsed || *parsed > 1472) continue;
             config.payload_min = *parsed;
         } else if (key == "payload_max") {
             const auto parsed = parse_u32(value);
-            if (!parsed || *parsed > 1472) return std::nullopt;
+            if (!parsed || *parsed > 1472) continue;
             config.payload_max = *parsed;
         } else if (key == "rate_limit") {
             const auto parsed = parse_u32(value);
-            if (!parsed) return std::nullopt;
+            if (!parsed) continue;
             config.rate_limit = *parsed;
         } else if (key == "source_mode") {
-            if (value != "real" && value != "spoofed") return std::nullopt;
+            if (value != "real" && value != "spoofed") continue;
             config.use_spoof_ips = value == "spoofed";
         } else if (key == "real_ip_interface") {
-            if (value.empty()) return std::nullopt;
+            if (value.empty()) continue;
             config.real_ip_interface = value;
         } else {
-            return std::nullopt;
+            continue;
         }
     }
 

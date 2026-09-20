@@ -3,6 +3,7 @@
 #include "config/config.hpp"
 #include "protocol/ipv4.hpp"
 #include "protocol/udp.hpp"
+#include "protocol/checksum.hpp"
 #include "random/fast_random.hpp"
 #include "common/constants.hpp"
 #include "common/platform.hpp"
@@ -52,15 +53,19 @@ bool UdpStrategy::build(const PacketContext& ctx, common::PacketBuffer& output) 
     iph->flags_fragment = 0;
     iph->ttl = ctx.rng.range(64, 255);
     iph->protocol = protocol::IPPROTO_VALUE_UDP;
-    iph->checksum = 0;
     iph->source = src_ip;
     iph->destination = dst_ip;
+    iph->checksum = 0;
+    iph->checksum = protocol::internet_checksum(reinterpret_cast<const std::uint8_t*>(iph), 20);
 
     // UDP header
     udph->source_port = sport;
     udph->destination_port = htons(ctx.config.target_port);
     udph->length = htons(protocol::UDP_HEADER_SIZE + data_len);
-    udph->checksum = 0;
+    udph->checksum = protocol::udp_checksum(
+        output.ptr() + protocol::IPv4_HEADER_SIZE,
+        protocol::UDP_HEADER_SIZE + data_len,
+            src_ip, dst_ip);
 
     output.size = pkt_len;
     return true;

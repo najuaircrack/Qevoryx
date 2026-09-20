@@ -27,3 +27,12 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Private C2 sources (NOT open source) - live in the private repo/branch only.
+# Tracked copies on the `c2` branch are unaffected by these rules.
+include/agent/
+include/c2/
+include/server/
+src/agent/
+src/c2/
+src/server/

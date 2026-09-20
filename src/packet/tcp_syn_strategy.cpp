@@ -29,7 +29,6 @@ bool TcpSynStrategy::build(const PacketContext& ctx, common::PacketBuffer& outpu
     iph->flags_fragment = 0;
     iph->ttl = ctx.rng.range(64, 255);
     iph->protocol = protocol::IPPROTO_VALUE_TCP;
-    iph->checksum = 0;
     iph->source = src_ip;
     iph->destination = dst_ip;
 
@@ -48,16 +47,20 @@ bool TcpSynStrategy::build(const PacketContext& ctx, common::PacketBuffer& outpu
 
     // TCP options (MSS, ~30% chance)
     if (ctx.rng.coin_flip(30)) {
-        auto* opt = output.ptr() + protocol::IPv4_HEADER_SIZE + protocol::TCP_HEADER_SIZE;
-        opt[0] = protocol::TCP_OPTION_MSS_KIND;
-        opt[1] = protocol::TCP_OPTION_MSS_LEN;
-        opt[2] = (protocol::TCP_OPTION_MSS_VALUE >> 8) & 0xFF;
-        opt[3] = protocol::TCP_OPTION_MSS_VALUE & 0xFF;
-        tcph->data_offset_reserved = protocol::TCP_DATA_OFFSET_6;
-        pkt_len += 4;
+        if (pkt_len + 4 <= common::MAX_PACKET_SIZE) {
+            auto* opt = output.ptr() + protocol::IPv4_HEADER_SIZE + protocol::TCP_HEADER_SIZE;
+            opt[0] = protocol::TCP_OPTION_MSS_KIND;
+            opt[1] = protocol::TCP_OPTION_MSS_LEN;
+            opt[2] = (protocol::TCP_OPTION_MSS_VALUE >> 8) & 0xFF;
+            opt[3] = protocol::TCP_OPTION_MSS_VALUE & 0xFF;
+            tcph->data_offset_reserved = protocol::TCP_DATA_OFFSET_6;
+            pkt_len += 4;
+        }
     }
 
     iph->total_length = htons(pkt_len);
+    iph->checksum = 0;
+    iph->checksum = protocol::internet_checksum(reinterpret_cast<const std::uint8_t*>(iph), 20);
     tcph->checksum = protocol::tcp_checksum(
         output.ptr() + protocol::IPv4_HEADER_SIZE,
         pkt_len - protocol::IPv4_HEADER_SIZE,

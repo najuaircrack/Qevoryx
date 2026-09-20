@@ -30,9 +30,10 @@ bool SynAckStrategy::build(const PacketContext& ctx, common::PacketBuffer& outpu
     iph->flags_fragment = 0;
     iph->ttl = ctx.rng.range(64, 255);
     iph->protocol = protocol::IPPROTO_VALUE_TCP;
-    iph->checksum = 0;
     iph->source = src_ip;
     iph->destination = dst_ip;
+    iph->checksum = 0;
+    iph->checksum = protocol::internet_checksum(reinterpret_cast<const std::uint8_t*>(iph), 20);
 
     // TCP header — SYN+ACK
     tcph->source_port = sport;

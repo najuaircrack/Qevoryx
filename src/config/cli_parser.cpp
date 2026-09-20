@@ -6,6 +6,7 @@
 #include <cstring>
 #include <charconv>
 #include <optional>
+#include <stdexcept>
 #include <string_view>
 #include <limits>
 #include <system_error>
@@ -47,13 +48,14 @@ Config CliParser::parse(int argc, char** argv) {
 
     if (argc < 3) {
         print_usage(argv[0]);
-        std::exit(1);
+        throw std::runtime_error("insufficient arguments");
     }
 
     int positional = 0;
     std::string positional_values[5];
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
+        if (arg == nullptr || arg[0] == '\0') continue;
         if (arg[0] == '-' && arg[1] == '-' && arg[2] != '\0') {
             continue;
         }
@@ -66,21 +68,21 @@ Config CliParser::parse(int argc, char** argv) {
 
     if (positional < 2) {
         print_usage(argv[0]);
-        std::exit(1);
+        throw std::runtime_error("missing required positional arguments (target_ip and port)");
     }
 
     cfg.target_ip = positional_values[0];
     if (!is_valid_ipv4(cfg.target_ip)) {
         std::cerr << "  Invalid target IP: " << cfg.target_ip << std::endl;
         print_usage(argv[0]);
-        std::exit(1);
+        throw std::runtime_error("invalid target IP: " + cfg.target_ip);
     }
 
     const auto port = parse_integer(positional_values[1].c_str());
     if (!port || *port < 1 || *port > 65535) {
         std::cerr << "  Invalid port: " << positional_values[1] << std::endl;
         print_usage(argv[0]);
-        std::exit(1);
+        throw std::runtime_error("invalid port: " + positional_values[1]);
     }
     cfg.target_port = static_cast<std::uint16_t>(*port);
 
@@ -89,7 +91,7 @@ Config CliParser::parse(int argc, char** argv) {
         if (!workers || *workers < 1 || *workers > common::MAX_THREADS) {
             std::cerr << "  Invalid worker count: " << positional_values[2] << std::endl;
             print_usage(argv[0]);
-            std::exit(1);
+            throw std::runtime_error("invalid worker count: " + positional_values[2]);
         }
         cfg.worker_count = static_cast<std::uint32_t>(*workers);
     }
@@ -99,7 +101,7 @@ Config CliParser::parse(int argc, char** argv) {
         if (!mode || *mode < 0 || *mode > 6) {
             std::cerr << "  Invalid packet mode: " << positional_values[3] << std::endl;
             print_usage(argv[0]);
-            std::exit(1);
+            throw std::runtime_error("invalid packet mode: " + positional_values[3]);
         }
         switch (*mode) {
             case 0: cfg.packet_mode = PacketMode::Mixed; break;
@@ -117,7 +119,7 @@ Config CliParser::parse(int argc, char** argv) {
         if (!rate || *rate < 0 || *rate > std::numeric_limits<std::uint32_t>::max()) {
             std::cerr << "  Invalid rate limit: " << positional_values[4] << std::endl;
             print_usage(argv[0]);
-            std::exit(1);
+            throw std::runtime_error("invalid rate limit: " + positional_values[4]);
         }
         cfg.rate_limit = static_cast<std::uint32_t>(*rate);
     }
@@ -125,12 +127,13 @@ Config CliParser::parse(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--real-ip") == 0) {
             cfg.use_spoof_ips = false;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
+            if (i + 1 < argc && argv[i + 1] != nullptr && argv[i + 1][0] != '\0' && argv[i + 1][0] != '-') {
                 cfg.real_ip_interface = argv[++i];
             }
         } else if (std::strcmp(argv[i], "--spoof") == 0) {
             cfg.use_spoof_ips = true;
-        } else if (std::strcmp(argv[i], "--interface") == 0 && i + 1 < argc) {
+        } else if (std::strcmp(argv[i], "--interface") == 0 && i + 1 < argc
+                   && argv[i + 1] != nullptr && argv[i + 1][0] != '\0' && argv[i + 1][0] != '-') {
             cfg.real_ip_interface = argv[++i];
         }
     }

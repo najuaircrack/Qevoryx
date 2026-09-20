@@ -29,7 +29,7 @@ FileTransport::FileTransport(const std::string& path)
       }(path)) {
 }
 #else
-    : fd_(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644)) {
+    : fd_(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644)) {
 }
 #endif
 
