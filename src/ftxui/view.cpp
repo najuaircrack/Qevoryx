@@ -504,6 +504,7 @@ inline std::vector<std::string> c2_server_action_labels(const ApplicationSnapsho
         snapshot.c2.server_running ? "Stop Server" : "Start Server",
         "Restart Server",
         "Install Script",
+        snapshot.c2.remote ? "Disconnect Remote" : "Connect Remote (F4)",
         "Back to Local",
     };
 }

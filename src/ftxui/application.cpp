@@ -392,6 +392,21 @@ inline bool broadcast_current_task(ui::ApplicationSnapshot& snapshot, ui::TuiSta
     return true;
 }
 
+// F4 and the server panel's Connect/Disconnect action share this:
+// it either drops the remote link or opens the 3-step login dialog.
+void toggle_remote_connect(ui::TuiState& state, ui::ApplicationSnapshot& snapshot,
+                           app::ApplicationController& controller) {
+    if (controller.c2_remote_connected()) {
+        controller.c2_disconnect_remote();
+        refresh_runtime(snapshot, controller.snapshot());
+    } else {
+        state.edit_row = 500;
+        state.edit_buffer = state.remote_host_buffer;
+        state.input_mode = ui::InputMode::Editing;
+        state.error_message.clear();
+    }
+}
+
 bool activate_c2_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
                         app::ApplicationController& controller) {
     if (state.c2_focus == ui::C2FocusPanel::ServerControl) {
@@ -435,6 +450,9 @@ bool activate_c2_action(ui::ApplicationSnapshot& snapshot, ui::TuiState& state,
                 return true;
             }
             case 3:
+                toggle_remote_connect(state, snapshot, controller);
+                return true;
+            case 4:
                 state.tui_mode = ui::TuiMode::Local;
                 return true;
             default: return true;
@@ -550,7 +568,7 @@ inline void sync_task_cursor(ui::TuiState& state) {
 
 inline void sync_server_cursor(ui::TuiState& state) {
     if (state.c2_server_cursor < 0) state.c2_server_cursor = 0;
-    if (state.c2_server_cursor > 5) state.c2_server_cursor = 5;
+    if (state.c2_server_cursor > 6) state.c2_server_cursor = 6;
     if (state.c2_server_cursor <= 1) {
         state.c2_server_selected_field = state.c2_server_cursor;
     } else {
@@ -1007,16 +1025,7 @@ int run(int argc, char** argv) {
                 return true;
             }
             if (event == Event::F4) {
-                if (controller->c2_remote_connected()) {
-                    controller->c2_disconnect_remote();
-                    refresh_runtime(snapshot, controller->snapshot());
-                } else {
-                    // Remote connect dialog: host -> port -> token.
-                    state.edit_row = 500;
-                    state.edit_buffer = state.remote_host_buffer;
-                    state.input_mode = ui::InputMode::Editing;
-                    state.error_message.clear();
-                }
+                toggle_remote_connect(state, snapshot, *controller);
                 return true;
             }
 

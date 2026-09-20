@@ -15,12 +15,12 @@ using State = ui::TuiState;
 
 inline constexpr int config_row_count = 9;
 inline constexpr int action_count = 8;
-inline constexpr int c2_server_action_count = 4;
+inline constexpr int c2_server_action_count = 5;
 inline constexpr int c2_task_action_count = 3;
 inline constexpr int c2_server_field_count = 2;
 inline constexpr int c2_task_field_count = 6;
 inline constexpr int c2_task_cursor_count = 9;
-inline constexpr int c2_server_cursor_count = 6;
+inline constexpr int c2_server_cursor_count = 7;
 inline constexpr std::size_t visible_log_rows = 5;
 inline constexpr std::size_t visible_agent_rows = 6;
 
