@@ -69,6 +69,8 @@ struct AgentSnapshot {
 
 struct C2Snapshot {
     bool server_running{false};
+    bool remote{false};  // true when driving a remote Enterprise server
+    std::string remote_host;
     std::uint16_t server_port{7777};
     std::string psk;
     std::string bind_address{"0.0.0.0"};
@@ -145,6 +147,10 @@ struct TuiState {
 
     std::string c2_port_buffer{"7777"};
     std::string c2_psk_buffer;
+    // Remote operator connect dialog (F4). Edit rows 500/501/502.
+    std::string remote_host_buffer{"127.0.0.1"};
+    std::string remote_port_buffer{"8080"};
+    std::string remote_token_buffer;
     std::string c2_target_buffer{"192.168.1.100"};
     std::uint16_t c2_target_port{25565};
     int c2_mode_index{0};

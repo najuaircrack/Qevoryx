@@ -4,12 +4,15 @@
 #include "config/cli_parser.hpp"
 #include "config/settings_store.hpp"
 #include "ftxui/application.hpp"
+#include "remote/operator_client.hpp"
 #ifdef QEVORYX_ENABLE_C2
 #include "server/c2_config.hpp"
 #include "server/serve.hpp"
 #include "server/server.hpp"
 #endif
 
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <iostream>
@@ -37,7 +40,11 @@ void print_server_help(const char* prog) {
               << "    " << prog << " --export-c2 <dest_dir> [--config <server.ini>]\n"
               << "    " << prog << " --server-status [--config <server.ini>]\n"
               << "    " << prog << " --print-systemd-unit [--bin <path>]\n\n"
-              << "  Config: server.ini + c2.psk sidecar (see README). QEVORYX_C2_PSK env overrides.\n\n";
+              << "  Config: server.ini + c2.psk sidecar (see README). QEVORYX_C2_PSK env overrides.\n\n"
+              << "  Remote operator (Enterprise server, no engine needed):\n"
+              << "    " << prog
+              << " --remote-status --remote-host <ip> --remote-port <port>\n"
+              << "       Token via --remote-token or QEVORYX_REMOTE_TOKEN env. F4 in the panel.\n\n";
 }
 
 }  // namespace
@@ -82,6 +89,77 @@ int main(int argc, char** argv) {
             std::cerr << "This build does not include the C2 server (open-source build).\n";
             return 2;
 #endif
+        }
+
+        if (has_flag(argc, argv, "--remote-status")) {
+            // Scriptable remote check (public client). Token via env preferred:
+            // flags stay visible in `ps`, env does not.
+            const char* host = flag_value(argc, argv, "--remote-host");
+            const char* port_s = flag_value(argc, argv, "--remote-port");
+            const char* token = flag_value(argc, argv, "--remote-token");
+            if (!token || !*token) token = std::getenv("QEVORYX_REMOTE_TOKEN");
+            if (!host || !port_s || !token || !*token) {
+                std::cerr << "Usage: " << argv[0]
+                          << " --remote-status --remote-host <ip> --remote-port <port>\n"
+                          << "       Token via --remote-token or QEVORYX_REMOTE_TOKEN env.\n";
+                return 2;
+            }
+            remote::OperatorClient client;
+            client.configure(host, static_cast<std::uint16_t>(std::stoul(port_s)), token);
+            remote::StatusInfo st;
+            remote::Result r = client.get_status(st);
+            if (!r.ok) {
+                std::cerr << "Remote status failed: "
+                          << (r.error.empty() ? ("HTTP " + std::to_string(r.http_code))
+                                             : r.error)
+                          << "\n";
+                return 1;
+            }
+            std::cout << r.body << "\n";
+            return 0;
+        }
+
+        if (has_flag(argc, argv, "--remote-dispatch")) {
+            const char* host = flag_value(argc, argv, "--remote-host");
+            const char* port_s = flag_value(argc, argv, "--remote-port");
+            const char* token = flag_value(argc, argv, "--remote-token");
+            if (!token || !*token) token = std::getenv("QEVORYX_REMOTE_TOKEN");
+            const char* target = flag_value(argc, argv, "--remote-target");
+            const char* tport_s = flag_value(argc, argv, "--remote-tport");
+            if (!host || !port_s || !token || !*token || !target || !tport_s) {
+                std::cerr << "Usage: " << argv[0]
+                          << " --remote-dispatch --remote-host <ip> --remote-port <port>\n"
+                          << "       --remote-target <ip> --remote-tport <port>\n"
+                          << "       [--remote-mode N] [--remote-workers N] [--remote-rate N]\n"
+                          << "       [--remote-duration N] [--remote-token T|QEVORYX_REMOTE_TOKEN]\n";
+                return 2;
+            }
+            const char* mode_s = flag_value(argc, argv, "--remote-mode");
+            const char* workers_s = flag_value(argc, argv, "--remote-workers");
+            const char* rate_s = flag_value(argc, argv, "--remote-rate");
+            const char* dur_s = flag_value(argc, argv, "--remote-duration");
+            remote::OperatorClient client;
+            client.configure(host, static_cast<std::uint16_t>(std::stoul(port_s)), token);
+            std::vector<std::uint32_t> ids;
+            remote::Result r = client.dispatch(
+                target, static_cast<std::uint16_t>(std::stoul(tport_s)),
+                mode_s ? std::stoi(mode_s) : 0, workers_s ? static_cast<std::uint32_t>(std::stoul(workers_s)) : 1,
+                rate_s ? static_cast<std::uint32_t>(std::stoul(rate_s)) : 0,
+                dur_s ? static_cast<std::uint32_t>(std::stoul(dur_s)) : 0, ids);
+            if (!r.ok) {
+                std::cerr << "Remote dispatch failed: "
+                          << (r.error.empty() ? ("HTTP " + std::to_string(r.http_code))
+                                             : r.error)
+                          << " " << r.body << "\n";
+                return 1;
+            }
+            std::cout << "{\"task_ids\":[";
+            for (std::size_t i = 0; i < ids.size(); ++i) {
+                if (i) std::cout << ",";
+                std::cout << ids[i];
+            }
+            std::cout << "]}\n";
+            return 0;
         }
 
         if (config::CliParser::has_cli_flag(argc, argv)) {

@@ -767,13 +767,65 @@ bool commit_c2_edit(ui::TuiState& state) {
     return true;
 }
 
-bool handle_edit_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state, const Event& event) {
+bool commit_remote_edit(ui::TuiState& state, app::ApplicationController& controller,
+                        ui::ApplicationSnapshot& snapshot) {
+    const std::string& value = state.edit_buffer;
+    if (state.edit_row == 500) {
+        if (value.empty() || value.size() > 64) {
+            state.error_message = "Enter the server host/IP.";
+            return false;
+        }
+        state.remote_host_buffer = value;
+        state.edit_row = 501;
+        state.edit_buffer = state.remote_port_buffer;
+        return true;
+    }
+    if (state.edit_row == 501) {
+        const auto parsed = parse_u32(value);
+        if (!parsed || *parsed == 0 || *parsed > 65535) {
+            state.error_message = "Port must be from 1 to 65535.";
+            return false;
+        }
+        state.remote_port_buffer = value;
+        state.edit_row = 502;
+        state.edit_buffer = state.remote_token_buffer;
+        return true;
+    }
+    if (state.edit_row == 502) {
+        if (value.empty()) {
+            state.error_message = "Enter the operator token.";
+            return false;
+        }
+        state.remote_token_buffer.clear();  // never retain it longer than needed
+        const std::string err = controller.c2_connect_remote(
+            state.remote_host_buffer,
+            static_cast<std::uint16_t>(parse_u32(state.remote_port_buffer).value_or(0)), value);
+        state.edit_buffer.clear();
+        if (!err.empty()) {
+            state.error_message = err;
+            state.input_mode = ui::InputMode::Navigation;
+            return false;
+        }
+        state.input_mode = ui::InputMode::Navigation;
+        state.tui_mode = ui::TuiMode::C2Server;
+        snapshot = controller.snapshot();
+        return true;
+    }
+    return false;
+}
+
+bool handle_edit_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state, const Event& event,
+                       app::ApplicationController& controller) {
     if (event == Event::Escape) {
         state.input_mode = ui::InputMode::Navigation;
         state.error_message.clear();
         return true;
     }
     if (event == Event::Return) {
+        if (state.edit_row >= 500) {
+            commit_remote_edit(state, controller, snapshot);
+            return true;
+        }
         if (state.tui_mode == ui::TuiMode::C2Server && state.edit_row == -1) {
             state.input_mode = ui::InputMode::Navigation;
             state.error_message.clear();
@@ -792,7 +844,7 @@ bool handle_edit_event(ui::ApplicationSnapshot& snapshot, ui::TuiState& state, c
     }
     if (event.is_character() && event.input().size() == 1) {
         const unsigned char character = static_cast<unsigned char>(event.input()[0]);
-        if (character >= 0x20 && character < 0x7f && state.edit_buffer.size() < 64)
+        if (character >= 0x20 && character < 0x7f && state.edit_buffer.size() < 128)
             state.edit_buffer.push_back(static_cast<char>(character));
         return true;
     }
@@ -948,17 +1000,28 @@ int run(int argc, char** argv) {
                 return true;
             }
             if (event == Event::F3) {
-#ifdef QEVORYX_ENABLE_C2
+                // C2 panels work in every build: with the engine they drive a
+                // local server, without it they drive a remote one (F4).
                 state.tui_mode = ui::TuiMode::C2Server;
                 state.error_message.clear();
-#else
-                state.error_message = "C2 server not included in this build.";
-#endif
+                return true;
+            }
+            if (event == Event::F4) {
+                if (controller->c2_remote_connected()) {
+                    controller->c2_disconnect_remote();
+                    refresh_runtime(snapshot, controller->snapshot());
+                } else {
+                    // Remote connect dialog: host -> port -> token.
+                    state.edit_row = 500;
+                    state.edit_buffer = state.remote_host_buffer;
+                    state.input_mode = ui::InputMode::Editing;
+                    state.error_message.clear();
+                }
                 return true;
             }
 
             if (state.input_mode == ui::InputMode::Editing)
-                return handle_edit_event(snapshot, state, event);
+                return handle_edit_event(snapshot, state, event, *controller);
             if (state.input_mode == ui::InputMode::Modal)
                 return handle_modal_event(snapshot, state, *controller, event);
 

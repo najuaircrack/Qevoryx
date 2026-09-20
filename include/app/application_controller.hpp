@@ -36,6 +36,12 @@ public:
                                     std::uint32_t duration_sec) = 0;
     virtual void c2_add_malleable(const std::string& name, const std::string& user_agent,
                                   const std::string& uri, const std::string& content_type) = 0;
+
+    // Remote operator mode (public client, Enterprise server). No engine needed.
+    virtual bool c2_remote_connected() const = 0;
+    virtual std::string c2_connect_remote(const std::string& host, std::uint16_t port,
+                                          const std::string& token) = 0;  // "" = ok
+    virtual void c2_disconnect_remote() = 0;
 };
 
 std::unique_ptr<ApplicationController> create_application_controller(config::Config config);

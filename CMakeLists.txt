@@ -23,6 +23,7 @@ set(QEVORYX_CORE_SOURCES
   src/packet/udp_strategy.cpp
   src/protocol/checksum.cpp
   src/random/fast_random.cpp
+  src/remote/operator_client.cpp
   src/transport/file_transport.cpp
   src/transport/test_transport.cpp
 )

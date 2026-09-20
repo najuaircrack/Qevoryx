@@ -89,6 +89,20 @@ skip it, or set `QEVORYX_NO_SPLASH=1` to disable it.
 
 The panel is built with FTXUI. The UI is separated from the backend through an application controller, so the interface never touches worker threads, sockets, or packet construction directly. Configuration changes remain in the UI while actions update runtime state, preventing launch, stop, pause, help, and log actions from restoring old values. The Interface row cycles through active IPv4 adapters and prefers the adapter with the default route. When the event log has focus, the arrow keys scroll through older events.
 
+## Remote operator mode (Enterprise)
+
+This build contains no C2 engine, but it can operate a remote Enterprise
+server you have credentials for. Press **F4**, enter the server host, port,
+and operator token (or check `--remote-status` for scripting):
+
+```bash
+QEVORYX_REMOTE_TOKEN=<token> ./qevoryx --remote-status --remote-host 10.0.0.1 --remote-port 8080
+```
+
+Remote operators can dispatch tests within their assigned scope and stop
+their own tests. Server lifecycle stays local-only by design: there is no
+remote stop, by protocol, not just by UI.
+
 ## Screens
 
 The main screen shows configuration, actions, status, and the latest events. Launching switches to a runtime screen with the selected profile, worker count, target, live packet count, and error count. Press `R` to return to the main screen, `S` to stop, or `Q` to quit.

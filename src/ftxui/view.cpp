@@ -348,6 +348,7 @@ inline Element help_screen() {
         text("C2 Server Mode:") | bold | color(theme::Accent()),
         line("F2", "Switch to Local mode"),
         line("F3", "Switch to C2 Server mode"),
+        line("F4", "Connect/disconnect remote Enterprise server"),
         line("Tab", "Cycle Server/Agents/Task/Campaigns/Malleable"),
         line("Up/Down", "Move through fields and actions"),
         line("Left/Right", "Adjust port/workers/rate/mode/source"),
@@ -496,11 +497,20 @@ inline Element c2_server_panel(const ApplicationSnapshot& snapshot, const TuiSta
     };
 
     rows.push_back(section("SERVER"));
-    rows.push_back(hbox({text("  ") | color(snapshot.c2.server_running ? theme::Success() : theme::Error()),
-                         text(snapshot.c2.server_running ? "ONLINE" : "OFFLINE") |
-                             bold | color(snapshot.c2.server_running ? theme::Success() : theme::Error())}));
+    if (snapshot.c2.remote) {
+        rows.push_back(hbox({text("  ") | color(theme::Success()),
+                             text("REMOTE LINK") | bold | color(theme::Success())}));
+        rows.push_back(stat("Server", snapshot.c2.remote_host + ":" +
+                             std::to_string(snapshot.c2.server_port)));
+        rows.push_back(stat("Mode", "Operator (F4 disconnects)"));
+    } else {
+        rows.push_back(hbox({text("  ") | color(snapshot.c2.server_running ? theme::Success() : theme::Error()),
+                             text(snapshot.c2.server_running ? "ONLINE" : "OFFLINE") |
+                                 bold | color(snapshot.c2.server_running ? theme::Success() : theme::Error())}));
+    }
     // Editable Port / PSK fields. Selected via c2_server_cursor 0-1.
-    {
+    // Hidden in remote mode (local server controls don't apply).
+    if (!snapshot.c2.remote) {
         const bool focused = state.c2_focus == C2FocusPanel::ServerControl;
         const bool editing = focused && state.input_mode == InputMode::Editing &&
                              (state.edit_row == 100 || state.edit_row == 101);
@@ -846,8 +856,9 @@ inline Element c2_footer(const ApplicationSnapshot& snapshot, const TuiState& st
     if (state.c2_focus == C2FocusPanel::ServerControl) {
         return hbox({text(" "), mode_badge,
                      segment("↑↓", "Field/Action"), segment("Enter", "Edit/Run"),
-                     segment("S/X", "Start/Stop"), segment("Tab", "Panel"),
-                     segment("?", "Help"), segment("Q", "Quit")}) | color(theme::Border());
+                     segment("S/X", "Start/Stop"), segment("F4", "Remote"),
+                     segment("Tab", "Panel"), segment("?", "Help"),
+                     segment("Q", "Quit")}) | color(theme::Border());
     }
     if (state.c2_focus == C2FocusPanel::AgentList) {
         return hbox({text(" "), mode_badge,
