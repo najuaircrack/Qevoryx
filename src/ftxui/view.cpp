@@ -381,6 +381,33 @@ inline Element confirmation_dialog(const std::string& title, const std::string& 
     return panel(title, body, true) | clear_under | center | size(WIDTH, EQUAL, 58);
 }
 
+inline Element remote_connect_dialog(const TuiState& state) {
+    const char* step = "?";
+    const char* prompt = "";
+    std::string shown = state.edit_buffer;
+    if (state.edit_row == 500) {
+        step = "Step 1/3 — Server";
+        prompt = "Enterprise server host/IP:";
+    } else if (state.edit_row == 501) {
+        step = "Step 2/3 — Port";
+        prompt = "API port:";
+    } else {
+        step = "Step 3/3 — Token";
+        prompt = "Operator token (hidden):";
+        shown = std::string(state.edit_buffer.size(), '*');
+    }
+    auto body = vbox({
+        text(step) | bold | color(theme::Accent()),
+        text(prompt) | color(theme::Secondary()),
+        separator() | color(theme::Border()),
+        hbox({text("Type: ") | color(theme::Muted()),
+              text(shown.empty() ? "│" : shown + "│") | bold | color(theme::Accent())}),
+        text(state.error_message.empty() ? "Enter continues; Escape cancels." : state.error_message) |
+            color(state.error_message.empty() ? theme::Muted() : theme::Error()),
+    });
+    return panel("REMOTE CONNECT", body, true) | clear_under | center | size(WIDTH, EQUAL, 58);
+}
+
 Element loading_screen(int frame, int width, int height) {
     const bool use_intro = width >= 100 && height >= 30;
     const auto& intro_art = logo::IntroFrames[
@@ -1006,6 +1033,8 @@ Element render(const ApplicationSnapshot& snapshot, const TuiState& state,
         screen = dbox({std::move(screen), confirmation_dialog(
             "RESET CONFIRMATION", "Type RESET to restore safe defaults.",
             state.confirm_buffer, state.error_message)});
+    } else if (state.input_mode == InputMode::Editing && state.edit_row >= 500) {
+        screen = dbox({std::move(screen), remote_connect_dialog(state)});
     }
     return screen;
 }
