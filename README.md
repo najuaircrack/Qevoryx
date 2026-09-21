@@ -8,6 +8,32 @@ Qevoryx is a packet generator for careful network testing in places where you ha
 
 The command line is still there when you need it, but the panel is now the main way to use Qevoryx.
 
+## Editions
+
+| | Open (this repo) | Enterprise (private) |
+|---|---|---|
+| Local packet engine + panel + CLI | Yes | Yes |
+| C2 server, agents, headless mode | No | Yes |
+| Remote operator client (F4) | Yes — drive Enterprise | Yes |
+| Service install / auto-resume | No | Yes |
+
+Full guides live in [`docs/`](docs/): [architecture](docs/ARCHITECTURE.md),
+[usage](docs/USAGE.md). The picture first:
+
+```
+┌─────────────┐   config    ┌──────────────────┐   snapshot   ┌─────────────┐
+│  YOU (keys) │ ──────────▶ │  FTXUI PANEL     │ ◀─────────── │  CONTROLLER │
+└─────────────┘   actions   │  config/actions/ │   5×/second  │  backend    │
+                            │  status/log      │              └──────┬──────┘
+                            └──────────────────┘                     │ threads,
+                                                                     sockets,
+                                                                     packets
+```
+
+The panel never touches workers, sockets, or packets directly — everything
+goes through the controller, which is why the UI stays responsive while
+thousands of packets per second flow underneath.
+
 ## What you get
 
 * A component based FTXUI control panel
@@ -101,7 +127,8 @@ QEVORYX_REMOTE_TOKEN=<token> ./qevoryx --remote-status --remote-host 10.0.0.1 --
 
 Remote operators can dispatch tests within their assigned scope and stop
 their own tests. Server lifecycle stays local-only by design: there is no
-remote stop, by protocol, not just by UI.
+remote stop, by protocol, not just by UI. See [usage](docs/USAGE.md) for the
+full walkthrough.
 
 ## Screens
 
